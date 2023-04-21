@@ -234,27 +234,26 @@ _trim_and_lower_case_vm()
 
 _read_config_vm()
 {
-  declare -r vm_config_dir="$1"
-  declare -r image_name="$2"
+  declare -n ____vm_image_config="$1"
+  declare -r do_not_return_defaults="$2"
 
-  if [[ -n "$3" ]]; then
-    declare -n ___vm_image_config=$3
+  if [[ -n "${____vm_image_config[vm_config_path]}" ]]; then
+    declare -r vm_config_path="${____vm_image_config[vm_config_path]}"
+  else
+    declare -r vm_config_path="$(_get_dir_vm "config")/config.vm"
   fi
-
-  declare boot_type
-  declare ssh_port
-  declare vnc_port
 
   declare -i image_config_found=0
 
   while read -r line; do
 
-    myarray[idx]=$(echo -e "${myarray[idx]}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-    myarray[idx]=${myarray[idx],,}
+    config_setting[idx]=$(echo -e "${config_setting[idx]}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    config_setting[idx]=${config_setting[idx],,}
+
     local edited_line
     edited_line=$(_trim_and_lower_case_vm "$line")
 
-    if [[ "$edited_line" == "[$image_name]" ]]; then
+    if [[ "$edited_line" == "[${____vm_image_config[image_name]}]" ]]; then
       image_config_found=1
     elif [[ "$image_config_found" -eq 1 && "$edited_line" =~ ^"[".*"]"$ ]]; then
       break
@@ -262,84 +261,93 @@ _read_config_vm()
 
     if [[ $image_config_found -eq 1 ]]; then
 
-      IFS="=" read -ra myarray <<< "$line"
+      IFS="=" read -ra config_setting <<< "$line"
 
-      for ((idx = 0; idx < ${#myarray[@]}; idx++)); do
-        myarray[idx]=$(_trim_and_lower_case_vm "${myarray[idx]}")
+      for ((idx = 0; idx < ${#config_setting[@]}; idx++)); do
+        config_setting[idx]=$(_trim_and_lower_case_vm "${config_setting[idx]}")
       done
 
-      if [[ ${myarray[0]} == "boot_type" ]]; then
-        boot_type=${myarray[1]}
+      if [[ ${config_setting[0]} == "boot_type" && -z ${____vm_image_config[boot_type]} ]]; then
+        ____vm_image_config[boot_type]="${config_setting[1]}"
       fi
 
-      if [[ ${myarray[0]} == "ssh_port" ]]; then
-        ssh_port=${myarray[1]}
+      if [[ ${config_setting[0]} == "ssh_port" && -z ${____vm_image_config[ssh_port]} ]]; then
+        ____vm_image_config[ssh_port]="${config_setting[1]}"
       fi
 
-      if [[ ${myarray[0]} == "vnc_port" ]]; then
-        vnc_port=${myarray[1]}
+      if [[ ${config_setting[0]} == "vnc_port" && -z ${____vm_image_config[vnc_port]} ]]; then
+        ____vm_image_config[vnc_port]="${config_setting[1]}"
       fi
 
     fi
 
-  done < "${vm_config_dir}/config.vm"
+  done < "${vm_config_path}"
 
-  if [[ -z "$boot_type" ]]; then
-    echo "config: boot_type for ${image_name} not found. using efi"
-    boot_type="efi"
-  fi
+  if [[ -z "$do_not_return_defaults" ]]; then
+    if [[ -z "${____vm_image_config[boot_type]}" ]]; then
+      echo "$(basename "$0"): config: boot_type for ${____vm_image_config[image_name]} not found. using efi"
+      ____vm_image_config[boot_type]="efi"
+    fi
 
-  if [[ -z "$ssh_port" ]]; then
-    echo "config: ssh_port for ${image_name} not found. using 2222"
-    ssh_port="2222"
-  fi
+    if [[ -z "${____vm_image_config[ssh_port]}" ]]; then
+      echo "$(basename "$0"): config: ssh_port for ${____vm_image_config[image_name]} not found. using 2222"
+      ____vm_image_config[ssh_port]="2222"
+    fi
 
-  if [[ -z "$vnc_port" ]]; then
-    echo "config: vnc_port for ${image_name} not found. using 5900"
-    vnc_port="5900"
+    if [[ -z "${____vm_image_config[vnc_port]}" ]]; then
+      echo "$(basename "$0"): config: vnc_port for ${____vm_image_config[image_name]} not found. using 5900"
+      ____vm_image_config[vnc_port]="5900"
+    fi
   fi
 
   if [[ -n "$3" ]]; then
-    ___vm_image_config+=("$image_name")
-    ___vm_image_config+=("$boot_type")
-    ___vm_image_config+=("$ssh_port")
-    ___vm_image_config+=("$vnc_port")
-  else
-    echo "$boot_type $ssh_port $vnc_port"
+    echo "${____vm_image_config[@]}"
   fi
+
   [[ $image_config_found -eq 1 ]] && return 0 || return 1
 }
 
+# already existing values in config remain same and cannot be changed
+# delete and write again to update those or do it manually
 _write_config_vm()
 {
-  declare -r vm_config_dir="$1"
-  declare -r image_name="$2"
-  declare boot_type="$3"
-  declare ssh_port="$4"
-  declare vnc_port="$5"
+  declare -n ___vm_image_config="$1"
+  declare -r overwrite_existing="$2"
 
-  if _read_config_vm "$vm_config_dir" "$image_name" &> /dev/null; then
-    return 1
+  if [[ -n "${___vm_image_config[vm_config_path]}" ]]; then
+    declare -r vm_config_path="${___vm_image_config[vm_config_path]}"
+  else
+    declare -r vm_config_path="$(_get_dir_vm "config")/config.vm"
   fi
 
-  if [[ -z "$boot_type" ]]; then
-    boot_type="efi"
+  if _read_config_vm ___vm_image_config "do_not_return_defaults" &> /dev/null; then
+    if [[ -n "$overwrite_existing" ]]; then
+      _delete_config_vm "${___vm_image_config[image_name]}"
+    else
+      return 1
+    fi
   fi
 
-  if [[ -z "$ssh_port" ]]; then
-    ssh_port="2222"
+  if [[ -z "$overwrite_existing" ]]; then
+    if [[ -z "${___vm_image_config[boot_type]}" ]]; then
+      ___vm_image_config[boot_type]="efi"
+    fi
+
+    if [[ -z "${___vm_image_config[ssh_port]}" ]]; then
+      ___vm_image_config[ssh_port]="2222"
+    fi
+
+    if [[ -z "${___vm_image_config[vnc_port]}" ]]; then
+      ___vm_image_config[vnc_port]="5900"
+    fi
   fi
 
-  if [[ -z "$vnc_port" ]]; then
-    vnc_port="5900"
-  fi
+  cat >> "${vm_config_path}" << EOF
 
-  cat >> "${vm_config_dir}/config.vm" << EOF
-
-[$image_name]
-boot_type=$boot_type
-ssh_port=$ssh_port
-vnc_port=$vnc_port
+[${___vm_image_config[image_name]}]
+boot_type=${___vm_image_config[boot_type]}
+ssh_port=${___vm_image_config[ssh_port]}
+vnc_port=${___vm_image_config[vnc_port]}
 EOF
 
   return 0
@@ -347,17 +355,18 @@ EOF
 
 _delete_config_vm()
 {
-  declare -r vm_config_dir="$1"
-  declare -r image_name="$2"
+  declare -r image_name="$1"
+  if [[ -n "$2" ]]; then
+    declare -r vm_config_path="$2"
+  else
+    declare -r vm_config_path="$(_get_dir_vm "config")/config.vm"
+  fi
 
   declare -i image_config_found=0
   declare -i image_config_start=0
   declare -i image_config_end=0
 
   while read -r line; do
-
-    myarray[idx]=$(echo -e "${myarray[idx]}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-    myarray[idx]=${myarray[idx],,}
 
     local edited_line
     edited_line=$(_trim_and_lower_case_vm "$line")
@@ -371,10 +380,10 @@ _delete_config_vm()
 
     image_config_end+=1
 
-  done < "${vm_config_dir}/config.vm"
+  done < "${vm_config_path}"
 
   if [[ $image_config_found -eq 1 ]]; then
-    sed -i "${image_config_start},${image_config_end}d" "${vm_config_dir}/config.vm"
+    sed -i "${image_config_start},${image_config_end}d" "${vm_config_path}"
     return 0
   fi
 
@@ -392,26 +401,37 @@ create_image_vm()
 
 initialize_vm()
 {
-  declare -r iso_name="$1"
-  declare -r image_name="$2"
-  declare -r boot_type="$3"
-  declare -r ssh_port="$4"
-  declare -ri vnc_port="$5"
+  declare -n __vm_image_config="$1"
 
-  declare -r vm_config_dir=$(_get_dir_vm "config")
+  declare -r iso_name="${__vm_image_config[iso_name]}"
+  declare -r image_name="${__vm_image_config[image_name]}"
+  declare -r boot_type="${__vm_image_config[boot_type]}"
+  declare -ri ssh_port="${__vm_image_config[ssh_port]}"
+  declare -ri vnc_port="${__vm_image_config[vnc_port]}"
+
+  if [[ -z "$image_name" || -z "$iso_name" ]]; then
+    echo "$(basename "$0"): image_name or --iso_name missing"
+    return 1
+  fi
+
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r vm_iso_dir=$(_get_dir_vm "iso")
   declare -r vm_ovmf_dir=$(_get_dir_vm "ovmf")
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
   declare -r vm_samba_shared_dir=$(_get_dir_vm "samba")
 
-  _write_config_vm "$vm_config_dir" "$image_name" "$boot_type" "$ssh_port" "$vnc_port"
+  _write_config_vm __vm_image_config
+
+  # TODO
+  # declare -ri ram="${__vm_image_config[ram]}"
+  # declare -ri cores="${__vm_image_config[cores]}"
+  # declare -ri cpus="${__vm_image_config[cpus]}"
 
   if [[ "legacy" == $(_trim_and_lower_case_vm "$boot_type") ]]; then
     qemu-system-x86_64 -enable-kvm -cdrom "$vm_iso_dir"/"$iso_name" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4
   else
     cp -i "$vm_ovmf_dir"/OVMF_CODE.fd "$vm_ovmf_var_for_images_dir"/"$image_name".fd
-    qemu-system-x86_64 -enable-kvm -cdrom "$vm_iso_dir"/"$iso_name" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 -drive if=pflash,format=raw,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
+    qemu-system-x86_64 -enable-kvm -cdrom "${vm_iso_dir}/${iso_name}" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 -drive if=pflash,format=raw,unit=0,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   fi
 
   echo "initialized image: ${vm_image_dir}/${image_name}"
@@ -419,17 +439,14 @@ initialize_vm()
 
 setup_vm()
 {
-  declare -r iso_name="$1"
-  declare -r image_name="$2"
-  declare -r boot_type="$3"
-  declare -r ssh_port="$4"
-  declare -r vnc_port="$5"
+  declare -n _vm_image_config="$1"
 
   declare -r vm_image_dir=$(_get_dir_vm "image")
+  declare -r image_name="${_vm_image_config[image_name]}"
 
   create_image_vm "$image_name"
-  initialize_vm "$iso_name" "$image_name" "$boot_type" "$ssh_port" "$vnc_port"
-  echo "setup complete for image: ${vm_image_dir}/${image_name}"
+  initialize_vm _vm_image_config
+  echo "$(basename "$0"): setup complete for image: ${vm_image_dir}/${image_name}"
 }
 
 remove_vm()
@@ -440,13 +457,14 @@ remove_vm()
   declare -r vm_config_dir=$(_get_dir_vm "config")
   declare -r vm_image_dir=$(_get_dir_vm "image")
 
-  rm -rv "$vm_image_dir"/"${image_name:?}"
-  _delete_config_vm "$vm_config_dir" "$image_name"
+  rm -rv "${vm_image_dir}/${image_name:?}"
+  rm -rv "${vm_ovmf_var_for_images_dir}/${image_name:?}.fd"
+  _delete_config_vm "$image_name"
 
   if [[ -n "$remove_backup" ]]; then
     declare -r vm_backup_dir=$(_get_dir_vm "backup")
-    rm -rv "$vm_backup_dir"/"${image_name:?}"
-    _delete_config_vm "$vm_backup_dir" "$image_name"
+    rm -rv "${vm_backup_dir}/${image_name:?}"
+    _delete_config_vm "$image_name" "$vm_backup_dir/config.vm"
   fi
 }
 
@@ -485,19 +503,24 @@ run_vm()
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
   declare -r vm_samba_shared_dir=$(_get_dir_vm "samba")
 
-  declare -a vm_image_config=()
+  declare -A ___vm_image_config
+  ___vm_image_config[image_name]="$image_name"
+  _read_config_vm ___vm_image_config
 
-  _read_config_vm "$vm_config_dir" "$image_name" vm_image_config
+  declare -r boot_type=${___vm_image_config[boot_type]}
+  declare -i ssh_port=${___vm_image_config[ssh_port]}
+  declare -i vnc_port=${___vm_image_config[vnc_port]}
 
-  declare boot_type=${vm_image_config[1]}
-  declare -i ssh_port=${vm_image_config[2]}
-  declare -i vnc_port=${vm_image_config[3]}
+  # TODO
+  # declare -ri ram="${__vm_image_config[ram]}"
+  # declare -ri cores="${__vm_image_config[cores]}"
+  # declare -ri cpus="${__vm_image_config[cpus]}"
 
   if [[ "$boot_type" == "legacy" ]]; then
-    echo "running image: ${vm_image_dir}/${image_name}"
+    echo "$(basename "$0"): running image: ${vm_image_dir}/${image_name}"
     qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 "$vm_image_dir"/"$image_name"
   elif [[ "$boot_type" == "efi" ]]; then
-    echo "running image: ${vm_image_dir}/${image_name}"
+    echo "$(basename "$0"): running image: ${vm_image_dir}/${image_name}"
     qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 "$vm_image_dir"/"$image_name" -drive if=pflash,format=raw,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   else
     echo "config: error in boot_type for ${image_name}"
@@ -595,11 +618,11 @@ ssh_vm()
   declare user_name
   [[ -n $2 ]] && user_name=$2 || user_name=$USER
 
-  declare -r vm_config_dir=$(_get_dir_vm "config")
+  declare -A ___vm_image_config
+  ___vm_image_config[image_name]="$image_name"
+  _read_config_vm ___vm_image_config
 
-  declare -a vm_image_config=()
-  _read_config_vm "$vm_config_dir" "$image_name" vm_image_config
-  declare -i ssh_port=${vm_image_config[2]}
+  declare -i ssh_port=${___vm_image_config[ssh_port]}
 
   ssh "$user_name"@localhost -p "$ssh_port"
 }
@@ -610,23 +633,59 @@ vnc_vm()
 
   declare -r vm_config_dir=$(_get_dir_vm "config")
 
-  declare -a vm_image_config=()
-  _read_config_vm "$vm_config_dir" "$image_name" vm_image_config
-  declare -i vnc_port=${vm_image_config[3]}
+  declare -A ___vm_image_config
+  ___vm_image_config[image_name]="$image_name"
+  _read_config_vm ___vm_image_config
 
+  declare -i vnc_port=${___vm_image_config[vnc_port]}
   vncviewer :"$vnc_port"
 }
 
 add_config_vm()
 {
-  declare -r image_name=$1
-  declare -r boot_type=$2
-  declare -r ssh_port=$3
-  declare -r vnc_port=$4
+  declare -n __vm_image_config="$1"
+  declare -r overwrite="$2"
 
-  declare -r vm_config_dir=$(_get_dir_vm "config")
+  declare -r image_name="${__vm_image_config[image_name]}"
 
-  _write_config_vm "$vm_config_dir" "$image_name" "$boot_type" "$ssh_port" "$vnc_port"
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
+
+  if [[ -z "$overwrite" ]]; then
+    if _write_config_vm __vm_image_config; then
+      echo "$(basename "$0"): config for $image_name written successfully"
+    fi
+  else
+    if _write_config_vm __vm_image_config "overwrite"; then
+      echo "$(basename "$0"): config for $image_name over-written successfully"
+    fi
+  fi
+}
+
+take_config_args_vm()
+{
+  declare -n _vm_image_config="$1"
+
+  for ((i = 3; i <= "$#"; i++)); do
+    next=$((i + 1))
+    case "${!i}" in
+      -i | --iso_name)
+        _vm_image_config[iso_name]="${!next}"
+        ;;
+      -b | --boot_type)
+        _vm_image_config[boot_type]="${!next}"
+        ;;
+      -s | --ssh_port)
+        _vm_image_config[ssh_port]="${!next}"
+        ;;
+      -v | --vnc_port)
+        _vm_image_config[vnc_port]="${!next}"
+        ;;
+      *) echo "$(basename "$0"): config: arg ${!i} not supported" ;;
+    esac
+  done
 }
 
 help_vm()
