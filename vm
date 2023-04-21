@@ -36,7 +36,7 @@ _get_dir_vm()
       echo "${HOME}/.config/vm/ovmf"
       ;;
     samba)
-      echo "${HOME}/shared"
+      echo "${HOME}/Shared"
       ;;
   esac
 }
@@ -343,7 +343,6 @@ _write_config_vm()
   fi
 
   cat >> "${vm_config_path}" << EOF
-
 [${___vm_image_config[image_name]}]
 boot_type=${___vm_image_config[boot_type]}
 ssh_port=${___vm_image_config[ssh_port]}
@@ -439,7 +438,7 @@ initialize_vm()
   if [[ "legacy" == $(_trim_and_lower_case_vm "$boot_type") ]]; then
     qemu-system-x86_64 -enable-kvm -cdrom "$vm_iso_dir"/"$iso_name" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4
   else
-    cp -i "$vm_ovmf_dir"/OVMF_CODE.fd "$vm_ovmf_var_for_images_dir"/"$image_name".fd
+    cp -i "$vm_ovmf_dir"/OVMF_VARS.fd "$vm_ovmf_var_for_images_dir"/"$image_name".fd
     qemu-system-x86_64 -enable-kvm -cdrom "${vm_iso_dir}/${iso_name}" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 -drive if=pflash,format=raw,unit=0,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   fi
 
