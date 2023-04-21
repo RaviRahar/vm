@@ -185,7 +185,7 @@ setup_bash_completion_vm()
 
 make_dirs_vm()
 {
-  declare -r remove_dirs="$1"
+  declare -r remove_dirs="$2"
 
   declare -r vm_config_dir=$(_get_dir_vm "config")
   declare -r vm_image_dir=$(_get_dir_vm "image")
@@ -193,21 +193,19 @@ make_dirs_vm()
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
   declare -r vm_samba_shared_dir=$(_get_dir_vm "samba")
 
-  if [[ -z "$remove_dirs" ]]; then
-    mkdir -pv "$vm_config_dir" "$vm_backup_dir" "$vm_image_dir"
-    mkdir -pv "$vm_samba_shared_dir" "$vm_ovmf_var_for_images_dir"
+  mkdir -pv "$vm_config_dir" "$vm_backup_dir" "$vm_image_dir"
+  mkdir -pv "$vm_samba_shared_dir" "$vm_ovmf_var_for_images_dir"
+
+  if [[ "$remove_dirs" == "-r" || "$remove_dirs" == "--remove" ]]; then
     mkdir -pv "$vm_backup_dir"/images "$vm_backup_dir"/ovmf
     touch "${vm_config_dir}/config.vm"
-  else
-    rm -rv "$vm_config_dir" "$vm_backup_dir" "$vm_image_dir"
-    rm -rv "$vm_samba_shared_dir" "$vm_ovmf_var_for_images_dir"
   fi
 }
 
 install_vm()
 {
-  declare -r uninstall="$1"
-  if [[ -z "$remove_dirs" ]]; then
+  declare -r uninstall="$2"
+  if [[ "$uninstall" == "-u" || "$uninstall" == "--uninstall" ]]; then
     make_dirs_vm
     mkdir -pv "$HOME/.local/scripts"
     export PATH="${PATH}:${HOME}/.local/scripts"
@@ -462,14 +460,14 @@ setup_vm()
 
 delete_vm()
 {
-  declare -r image_name="$1"
+  declare -r image_name="$2"
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
     return 1
   fi
 
-  declare -r remove_backup="$2"
+  declare -r remove_backup="$3"
 
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
@@ -478,7 +476,7 @@ delete_vm()
   rm -rv "${vm_ovmf_var_for_images_dir}/${image_name:?}.fd"
   _delete_config_vm "$image_name"
 
-  if [[ -n "$remove_backup" ]]; then
+  if [[ "$remove_backup" = "-a" || "$remove_backup" = "--all" ]]; then
     declare -r vm_backup_dir=$(_get_dir_vm "backup")
     rm -rv "${vm_backup_dir}/${image_name:?}"
     _delete_config_vm "$image_name" "$vm_backup_dir/config.vm"
@@ -487,37 +485,32 @@ delete_vm()
 
 backup_vm()
 {
-  declare -r image_name="$1"
-
-  if [[ -z "$image_name" ]]; then
-    echo "$(basename "$0"): image_name missing"
-    return 1
-  fi
+  declare -r config_or_image_name="$2"
 
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r vm_config_dir=$(_get_dir_vm "config")
   declare -r vm_backup_dir=$(_get_dir_vm "backup")
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
 
-  cp -i "$vm_image_dir"/"$image_name" "$vm_backup_dir"/images/"$image_name"
-  cp -i "$vm_ovmf_var_for_images_dir"/"$image_name".fd "$vm_backup_dir"/ovmf/"$image_name".fd
-  cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
+  if [[ "$config_or_image_name" == "-c" || "$config_or_image_name" == "--config" ]]; then
+    cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
+    echo "$(basename "$0"): backed up config: ${vm_config_dir}/config.vm to ${vm_backup_dir}/config.vm"
+  elif [[ -z "$config_or_image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  else
+    declare -r image_name="$config_or_image_name"
+    cp -i "$vm_image_dir"/"$image_name" "$vm_backup_dir"/images/"$image_name"
+    cp -i "$vm_ovmf_var_for_images_dir"/"$image_name".fd "$vm_backup_dir"/ovmf/"$image_name".fd
+    cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
 
-  echo "$(basename "$0"): backed up image: ${vm_image_dir}/${image_name}"
-}
-
-backup_config_vm()
-{
-  declare -r vm_config_dir=$(_get_dir_vm "config")
-  declare -r vm_backup_dir=$(_get_dir_vm "backup")
-
-  cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
-  echo "$(basename "$0"): backed up config: ${vm_config_dir}/config.vm to ${vm_backup_dir}/config.vm"
+    echo "$(basename "$0"): backed up image: ${vm_image_dir}/${image_name}"
+  fi
 }
 
 run_vm()
 {
-  declare -r image_name="$1"
+  declare -r image_name="$2"
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
@@ -597,61 +590,58 @@ qemu_smb_support_symlink_all_vm()
   done
 }
 
-list_active_vm()
+list_vm()
 {
   declare -r vm_image_dir=$(_get_dir_vm "image")
-  pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\1 \3|;t;d"
+  declare -r all_vms="$2"
+
+  if [[ "$all_vms" = "-a" || "$all_vms" = "--all" ]]; then
+    for file in "${vm_image_dir}/"*; do
+      if [[ -f "$file" ]]; then
+        basename "$file"
+      fi
+    done
+  elif [[ "$2" = "--active" || -z $2 ]]; then
+    pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\1 \3|;t;d"
+  fi
 }
 
-list_all_vm()
+kill_vm()
 {
-  declare -r vm_image_dir=$(_get_dir_vm "image")
+  declare -r option_or_image_name="$2"
 
-  for file in "${vm_image_dir}/"*; do
-    if [[ -f "$file" ]]; then
-      basename "$file"
+  if [[ $option_or_image_name == "-a" || $option_or_image_name == "--all" ]]; then
+    killall qemu-system-x86_64
+    echo "$(basename "$0"): killed all active qemu vms"
+  elif [[ $option_or_image_name == "-p" || $option_or_image_name == "--pid" ]]; then
+    declare -r pid="$3"
+
+    if [[ -z "$pid" ]]; then
+      echo "$(basename "$0"): pid missing"
+      return 1
     fi
-  done
-}
 
-kill_pid_vm()
-{
-  declare -r pid="$1"
+    kill -9 "$pid"
+    echo "$(basename "$0"): killed vm: ${pid}"
+  else
+    declare -r image_name="$option_or_image_name"
 
-  if [[ -z "$pid" ]]; then
-    echo "$(basename "$0"): pid missing"
-    return 1
+    if [[ -z "$image_name" ]]; then
+      echo "$(basename "$0"): image_name missing"
+      return 1
+    fi
+
+    declare pid
+    declare -r vm_image_dir=$(_get_dir_vm "image")
+    pid=$(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/${image_name}\(.*\)|\1|;t;d")
+    kill -9 "$pid"
+    echo "$(basename "$0"): killed vm: ${image_name}"
   fi
-
-  kill -9 "$pid"
-  echo "$(basename "$0"): killed vm: ${pid}"
-}
-
-kill_image_name_vm()
-{
-  declare -r image_name="$1"
-
-  if [[ -z "$image_name" ]]; then
-    echo "$(basename "$0"): image_name missing"
-    return 1
-  fi
-
-  declare pid
-  declare -r vm_image_dir=$(_get_dir_vm "image")
-  pid=$(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/${image_name}\(.*\)|\1|;t;d")
-  kill -9 "$pid"
-  echo "$(basename "$0"): killed vm: ${image_name}"
-}
-
-kill_all_vm()
-{
-  killall qemu-system-x86_64
-  echo "$(basename "$0"): killed all active qemu vms"
 }
 
 ssh_vm()
 {
-  declare -r image_name="$1"
+  declare -r image_name="$2"
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
@@ -659,7 +649,7 @@ ssh_vm()
   fi
 
   declare user_name
-  [[ -n $2 ]] && user_name=$2 || user_name=$USER
+  [[ -n $3 ]] && user_name=$3 || user_name=$USER
 
   declare -A ___vm_image_config
   ___vm_image_config[image_name]="$image_name"
@@ -672,7 +662,7 @@ ssh_vm()
 
 vnc_vm()
 {
-  declare -r image_name="$1"
+  declare -r image_name="$2"
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
@@ -690,7 +680,7 @@ vnc_vm()
 add_config_vm()
 {
   declare -n __vm_image_config="$1"
-  declare -r overwrite="$2"
+  declare -r overwrite="$3"
 
   declare -r image_name="${__vm_image_config[image_name]}"
 
@@ -699,7 +689,7 @@ add_config_vm()
     return 1
   fi
 
-  if [[ -z "$overwrite" ]]; then
+  if [[ "$overwrite" == "-o" || "$overwrite" == "--overwrite" ]]; then
     if _write_config_vm __vm_image_config; then
       echo "$(basename "$0"): config for $image_name written successfully"
     fi
@@ -729,22 +719,52 @@ take_config_args_vm()
       -v | --vnc_port)
         _vm_image_config[vnc_port]="${!next}"
         ;;
-      *) echo "$(basename "$0"): config: arg ${!i} not supported" ;;
+      *) ;;
     esac
   done
 }
 
 help_vm()
 {
-  help="
-Usage:
+  declare -r full_help="$2"
+  declare -r tldr="
+Usage: $(basename "$0") {{ option }}
+
+All options: --create_image --initialize --new --run --delete --backup --list 
+            --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs 
+            --install --help
+
+Tldr:
+  1. Create an vm from an iso:
+    $(basename "$0") --new image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+
+  2. Delete a vm image:
+    $(basename "$0") --delete image_name
+
+  3. List active vms:
+    $(basename "$0") --list
+
+  4. List all vms:
+    $(basename "$0") --list --all
+
+  5. Kill vm:
+    $(basename "$0") {{ image_name }}
+    $(basename "$0") --pid {{ pid }}
+
+  6. Start ssh or vnc to an active vm:
+    $(basename "$0") --ssh {{ image_name }}
+    $(basename "$0") --vnc {{ image_name }}
+"
+
+  declare -r complete_options="
+Usage: $(basename "$0") {{ option }}
+
+Options:
 
       -c|--create_image: create new vm image named {{ image_name }}
-
           $(basename "$0") -c image_name
         
       -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
-
           $(basename "$0") -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
 
           necessary: image_name, --iso_name
@@ -754,7 +774,6 @@ Usage:
               --vnc-port  : 5900
 
       -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
-
           $(basename "$0") -n image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
 
           necessary: image_name, --iso_name
@@ -764,59 +783,46 @@ Usage:
               --vnc-port  : 5900
 
       -r|--run: run image provided in {{ image_name }}
-
           $(basename "$0") -r image_name
 
       -d|--delete: backup vm image or config
-
           delete vm image:
-
           $(basename "$0") -d image_name
 
           delete vm image and backup too:
-
           $(basename "$0") -d -a image_name
 
       -l|--list: list active vm images or all vm images
-
           list active vm images:
-
             $(basename "$0") -l
 
           list all vm images:
-
             $(basename "$0") -l -a
 
       -b|--backup: backup vm image or config
-
           $(basename "$0") -b image_name
           $(basename "$0") -b -c
 
       -s|--ssh: ssh into currently running image
-
           $(basename "$0") -s image_name user_name
 
           defaluts:
             user_name: $USER
 
       -v|--vnc: attach tiger-vnc client to vm
-
           $(basename "$0") -v image_name
 
       -f|--smb_follow_symlinks: allow following symlinks in shared directory
-
           $(basename "$0") -f
 
           note: can be a security risk
 
       -k|--kill: kill vm with given {{ image_name }} {{ pid }} or all the vms
-
           $(basename "$0") -k image_name
           $(basename "$0") -k -p pid
           $(basename "$0") -k -a
 
       -a|--add_config: add config for vm image
-
           $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
 
           necessary: image_name
@@ -824,33 +830,24 @@ Usage:
               --boot-type : efi
               --ssh-port  : 2222
               --vnc-port  : 5900
-
           overwrite config if already exists:
-
           $(basename "$0") -a -o image_name boot_type ssh_port vnc_port
 
       -m|--make_dirs: make or remove directories required for this script
-
           make directories:
-
           $(basename "$0") -m
 
           remove directories:
-
           $(basename "$0") -m -r
 
       -z|--install: install or uninstall script
-
           install:
-
           $(basename "$0") -z
 
           uninstall:
-
-          $(basename "$0") -z -r
+          $(basename "$0") -z -u
 
       -u|--bash_completion: setup bash completion for this script
-
           $(basename "$0") -u
 
       -h|--help: print this help page
@@ -868,14 +865,18 @@ defaults for dirs (change in script):
 
   samba share directory: ${HOME}/shared
 "
-  echo "$help"
+  if [[ "$full_help" == "-a" || "$full_help" == "--all" ]]; then
+    echo "$complete_options"
+  else
+    echo "$tldr"
+  fi
 }
 
 main()
 {
   case "$1" in
     -c | --create_image)
-      declare -r image_name="$2"
+      declare -r image_name="$1"
       create_image_vm "$image_name"
       ;;
     -i | --initialize)
@@ -895,91 +896,49 @@ main()
       setup_vm vm_image_config
       ;;
     -r | --run)
-      declare -r image_name=$2
-      run_vm "$image_name"
+      run_vm "$@"
       ;;
     -d | --delete)
-      declare -r image_name=$2
-      delete_vm "$image_name"
-      if [[ "$2" = "-a" || "$2" = "--all" ]]; then
-        delete_vm "$image_name" "backup_too"
-      fi
+      delete_vm "$@"
       ;;
     -b | --backup)
-      if [[ "$2" == "-c" || "$2" == "--config" ]]; then
-        backup_config_vm
-      else
-        declare -r image_name=$2
-        backup_vm "$image_name"
-      fi
+      backup_vm "$@"
       ;;
     -l | --list)
-      if [[ "$2" = "-a" || "$2" = "--all" ]]; then
-        list_all_vm
-      elif [[ "$2" = "--active" || -z $2 ]]; then
-        list_active_vm
-      fi
+      list_vm "$@"
       ;;
     -s | --ssh)
-      declare -r image_name=$2
-      declare -r user_name=$3
-      ssh_vm "$image_name" "$user_name"
+      ssh_vm "$@"
       ;;
     -v | --vnc)
-      declare -r image_name=$2
-      vnc_vm "$image_name"
+      vnc_vm "$@"
       ;;
     -f | --smb_follow_symlinks)
       qemu_smb_support_symlink_all_vm
       ;;
     -k | --kill)
-      if [[ "$2" == "-a" || "$2" == "--all" ]]; then
-        kill_all_vm
-      elif [[ "$2" == "-p" || "$2" == "--pid" ]]; then
-        declare -r pid=$3
-        kill_pid_vm "$pid"
-      else
-        declare -r image_name=$2
-        kill_image_name_vm "$image_name"
-      fi
+      kill_vm "$@"
       ;;
     -a | --add_config)
+      declare -r image_name="$2"
       declare -A vm_image_config
-      take_config_args_vm vm_image_config "$@"
+      # shellcheck disable=SC2034
+      vm_image_config[image_name]="$image_name"
 
-      if [[ "$2" == "-o" || "$2" == "--overwrite" ]]; then
-        declare -r image_name="$3"
-        # shellcheck disable=SC2034
-        vm_image_config[image_name]="$image_name"
-        add_config_vm vm_image_config "overwrite"
-      else
-        declare -r image_name="$2"
-        # shellcheck disable=SC2034
-        vm_image_config[image_name]="$image_name"
-        add_config_vm vm_image_config
-      fi
+      take_config_args_vm vm_image_config "$@"
+      add_config_vm vm_image_config "$@"
       ;;
     -m | --make_dirs)
-      declare -r remove_dirs=$2
-      if [[ "$remove_dirs" == "-r" || "$remove_dirs" == "--remove" ]]; then
-        make_dirs_vm "-r"
-      else
-        make_dirs_vm
-      fi
+      make_dirs_vm "$@"
       ;;
     -z | --install)
-      declare -r uninstall=$2
-      if [[ "$uninstall" == "-r" || "$uninstall" == "--remove" ]]; then
-        install_vm "-r"
-      else
-        install_vm
-      fi
+      install_vm "$@"
       ;;
     -u | --bash_completion)
       setup_bash_completion_vm
       ;;
     -h | --help)
-      help_vm
+      help_vm "$@"
       ;;
     *) echo "$(basename "$0"): arg $1 not supported" ;;
   esac
