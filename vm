@@ -699,56 +699,56 @@ Usage:
         
       -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
 
-          $(basename "$0") -i iso_name image_name boot_type ssh_port vnc_port
+          $(basename "$0") -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
 
-          necessary: iso_name, image_name
+          necessary: image_name, --iso_name
           defaults:
-              boot-type : efi
-              ssh-port  : 2222
-              vnc-port  : 5900
+              --boot-type : efi
+              --ssh-port  : 2222
+              --vnc-port  : 5900
 
       -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
 
-          $(basename "$0") -n iso_name image_name boot_type ssh_port vnc_port
+          $(basename "$0") -n image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
 
-          necessary: iso_name, image_name
+          necessary: image_name, --iso_name
           defaults:
-              boot-type : efi
-              ssh-port  : 2222
-              vnc-port  : 5900
+              --boot-type : efi
+              --ssh-port  : 2222
+              --vnc-port  : 5900
 
-      -s|--start|--run: run image provided in {{ image_name }}
-
-          $(basename "$0") -s image_name
-
-      -r|--remove: backup vm image or config
-
-          remove vm image:
+      -r|--run: run image provided in {{ image_name }}
 
           $(basename "$0") -r image_name
 
-          remove vm image and backup too:
+      -d|--delete: backup vm image or config
 
-          $(basename "$0") -r -a image_name
+          delete vm image:
 
-      -p|--print|--list: list active vm images or all vm images
+          $(basename "$0") -d image_name
+
+          delete vm image and backup too:
+
+          $(basename "$0") -d -a image_name
+
+      -l|--list: list active vm images or all vm images
 
           list active vm images:
 
-            $(basename "$0") -p
+            $(basename "$0") -l
 
           list all vm images:
 
-            $(basename "$0") -p -a
+            $(basename "$0") -l -a
 
       -b|--backup: backup vm image or config
 
           $(basename "$0") -b image_name
           $(basename "$0") -b -c
 
-      -l|--ssh|--login: ssh into currently running image
+      -s|--ssh: ssh into currently running image
 
-          $(basename "$0") -l image_name user_name
+          $(basename "$0") -s image_name user_name
 
           defaluts:
             user_name: $USER
@@ -759,7 +759,7 @@ Usage:
 
       -f|--smb_follow_symlinks: allow following symlinks in shared directory
 
-          $(basename "$0") -l
+          $(basename "$0") -f
 
           note: can be a security risk
 
@@ -769,14 +769,19 @@ Usage:
           $(basename "$0") -k -p pid
           $(basename "$0") -k -a
 
-      -z|--add_config: add config for vm image already existing
+      -a|--add_config: add config for vm image
 
-          $(basename "$0") -z image_name boot_type ssh_port vnc_port
+          $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
 
+          necessary: image_name
           defaults:
-              boot-type : efi
-              ssh-port  : 2222
-              vnc-port  : 5900
+              --boot-type : efi
+              --ssh-port  : 2222
+              --vnc-port  : 5900
+
+          overwrite config if already exists:
+
+          $(basename "$0") -a -o image_name boot_type ssh_port vnc_port
 
       -m|--make_dirs: make or remove directories required for this script
 
@@ -788,15 +793,15 @@ Usage:
 
           $(basename "$0") -m -r
 
-      -j|--install: install or uninstall script
+      -z|--install: install or uninstall script
 
           install:
 
-          $(basename "$0") -j
+          $(basename "$0") -z
 
           uninstall:
 
-          $(basename "$0") -j -r
+          $(basename "$0") -z -r
 
       -u|--bash_completion: setup bash completion for this script
 
