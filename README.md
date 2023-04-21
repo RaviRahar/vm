@@ -11,121 +11,140 @@
 ### Uninstall
 
 ```bash
-./vm --install -r
+./vm --install -u
 ```
+
+### TLDR
+
+    All options: --create_image --initialize --new --run --delete --backup --list
+                --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs
+                --install --help
+
+    Tldr:
+    1. Create an vm from an iso:
+        vm --new image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+
+    2. Delete a vm image:
+        vm --delete image_name
+
+    3. List active vms:
+        vm --list
+
+    4. List all vms:
+        vm --list --all
+
+    5. Kill vm:
+        vm {{ image_name }}
+        vm --pid {{ pid }}
+
+    6. Start ssh or vnc to an active vm:
+        vm --ssh {{ image_name }}
+        vm --vnc {{ image_name }}
 
 ### Usage:
 
     -c|--create_image: create new vm image named {{ image_name }}
-
-        $(basename "$0") -c image_name
+        vm -c image_name
 
     -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
+        vm -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
 
-        $(basename "$0") -i iso_name image_name boot_type ssh_port vnc_port
-
-        necessary: iso_name, image_name
+        necessary: image_name, --iso_name
         defaults:
-            boot-type : efi
-            ssh-port  : 2222
-            vnc-port  : 5900
+            --boot-type : efi
+            --ssh-port  : 2222
+            --vnc-port  : 5900
 
     -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
+        vm -n image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
 
-        $(basename "$0") -n iso_name image_name boot_type ssh_port vnc_port
-
-        necessary: iso_name, image_name
+        necessary: image_name, --iso_name
         defaults:
-            boot-type : efi
-            ssh-port  : 2222
-            vnc-port  : 5900
+            --boot-type : efi
+            --ssh-port  : 2222
+            --vnc-port  : 5900
 
-    -s|--start|--run: run image provided in {{ image_name }}
+    -r|--run: run image provided in {{ image_name }}
+        vm -r image_name
 
-        $(basename "$0") -s image_name
+    -d|--delete: backup vm image or config
+        delete vm image:
+        vm -d image_name
 
-    -r|--remove: backup vm image or config
+        delete vm image and backup too:
+        vm -d -a image_name
 
-        remove vm image:
-
-        $(basename "$0") -r image_name
-
-        remove vm image and backup too:
-
-        $(basename "$0") -r -a image_name
-
-    -p|--print|--list: list active vm images or all vm images
-
+    -l|--list: list active vm images or all vm images
         list active vm images:
-
-        $(basename "$0") -p
+        vm -l
 
         list all vm images:
-
-        $(basename "$0") -p -a
+        vm -l -a
 
     -b|--backup: backup vm image or config
+        vm -b image_name
+        vm -b -c
 
-        $(basename "$0") -b image_name
-        $(basename "$0") -b -c
-
-    -l|--ssh|--login: ssh into currently running image
-
-        $(basename "$0") -l image_name user_name
+    -s|--ssh: ssh into currently running image
+        vm -s image_name user_name
 
         defaluts:
         user_name: $USER
 
     -v|--vnc: attach tiger-vnc client to vm
-
-        $(basename "$0") -v image_name
+        vm -v image_name
 
     -f|--smb_follow_symlinks: allow following symlinks in shared directory
-
-        $(basename "$0") -l
+        vm -f
 
         note: can be a security risk
 
     -k|--kill: kill vm with given {{ image_name }} {{ pid }} or all the vms
+        vm -k image_name
+        vm -k -p pid
+        vm -k -a
 
-        $(basename "$0") -k image_name
-        $(basename "$0") -k -p pid
-        $(basename "$0") -k -a
+    -a|--add_config: add config for vm image
+        vm -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
 
-    -z|--add_config: add config for vm image already existing
-
-        $(basename "$0") -z image_name boot_type ssh_port vnc_port
-
+        necessary: image_name
         defaults:
-            boot-type : efi
-            ssh-port  : 2222
-            vnc-port  : 5900
+            --boot-type : efi
+            --ssh-port  : 2222
+            --vnc-port  : 5900
+        overwrite config if already exists:
+        vm -a -o image_name boot_type ssh_port vnc_port
 
     -m|--make_dirs: make or remove directories required for this script
-
         make directories:
-
-        $(basename "$0") -m
+        vm -m
 
         remove directories:
+        vm -m -r
 
-        $(basename "$0") -m -r
-
-    -j|--install: install or uninstall script
-
+    -z|--install: install or uninstall script
         install:
-
-        $(basename "$0") -j
+        vm -z
 
         uninstall:
-
-        $(basename "$0") -j -r
+        vm -z -u
 
     -u|--bash_completion: setup bash completion for this script
-
-        $(basename "$0") -u
+        vm -u
 
     -h|--help: print this help page
+
+### Example Config:
+
+    [arch-linux-systemd]
+    boot_type=legacy
+    ssh_port=2222
+    vnc_port=5900
+
+    [debian]
+    boot_type=legacy
+    ssh_port=2223
+    vnc_port=5901
 
 ### Defaults for dirs:
 
