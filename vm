@@ -159,8 +159,8 @@ _completion_handler()
 
 # just source completion function when script is sourced
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-  complete -F _completion_handler ./vm
   complete -F _completion_handler vm
+  complete -F _completion_handler ./vm
   return 0
 fi
 
@@ -172,7 +172,7 @@ setup_bash_completion_vm()
     echo "complete -F _completion_handler vm"
   } >> /etc/bash_completion.d/vm.bash_completion
 
-  echo "modified file: /etc/bash_completion.d/vm.bash_completion"
+  echo "$(basename "$0"): modified file: /etc/bash_completion.d/vm.bash_completion"
 }
 
 ################################################################
@@ -393,10 +393,19 @@ _delete_config_vm()
 create_image_vm()
 {
   declare -r image_name="$1"
+
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
+
   declare -r vm_image_dir=$(_get_dir_vm "image")
 
-  qemu-img create -f qcow2 -o nocow=on "$vm_image_dir"/"$image_name" 20G
-  echo "created image: ${vm_image_dir}/${image_name}"
+  # TODO
+  # declare -ri image_size="${__vm_image_config[image_size]}"
+
+  qemu-img create -o nocow=on -f qcow2 "$vm_image_dir"/"${image_name:?}" 20G
+  echo "$(basename "$0"): created image: ${vm_image_dir}/${image_name}"
 }
 
 initialize_vm()
@@ -434,7 +443,7 @@ initialize_vm()
     qemu-system-x86_64 -enable-kvm -cdrom "${vm_iso_dir}/${iso_name}" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 -drive if=pflash,format=raw,unit=0,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   fi
 
-  echo "initialized image: ${vm_image_dir}/${image_name}"
+  echo "$(basename "$0"): initialized image: ${vm_image_dir}/${image_name}"
 }
 
 setup_vm()
@@ -449,13 +458,19 @@ setup_vm()
   echo "$(basename "$0"): setup complete for image: ${vm_image_dir}/${image_name}"
 }
 
-remove_vm()
+delete_vm()
 {
   declare -r image_name="$1"
+
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
+
   declare -r remove_backup="$2"
 
-  declare -r vm_config_dir=$(_get_dir_vm "config")
   declare -r vm_image_dir=$(_get_dir_vm "image")
+  declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
 
   rm -rv "${vm_image_dir}/${image_name:?}"
   rm -rv "${vm_ovmf_var_for_images_dir}/${image_name:?}.fd"
@@ -472,6 +487,11 @@ backup_vm()
 {
   declare -r image_name="$1"
 
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
+
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r vm_config_dir=$(_get_dir_vm "config")
   declare -r vm_backup_dir=$(_get_dir_vm "backup")
@@ -481,7 +501,7 @@ backup_vm()
   cp -i "$vm_ovmf_var_for_images_dir"/"$image_name".fd "$vm_backup_dir"/ovmf/"$image_name".fd
   cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
 
-  echo "backed up image: ${vm_image_dir}/${image_name}"
+  echo "$(basename "$0"): backed up image: ${vm_image_dir}/${image_name}"
 }
 
 backup_config_vm()
@@ -490,14 +510,18 @@ backup_config_vm()
   declare -r vm_backup_dir=$(_get_dir_vm "backup")
 
   cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
-  echo "backed up config: ${vm_config_dir}/config.vm to ${vm_backup_dir}/config.vm"
+  echo "$(basename "$0"): backed up config: ${vm_config_dir}/config.vm to ${vm_backup_dir}/config.vm"
 }
 
 run_vm()
 {
   declare -r image_name="$1"
 
-  declare -r vm_config_dir=$(_get_dir_vm "config")
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
+
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r vm_ovmf_dir=$(_get_dir_vm "ovmf")
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
@@ -523,7 +547,7 @@ run_vm()
     echo "$(basename "$0"): running image: ${vm_image_dir}/${image_name}"
     qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 "$vm_image_dir"/"$image_name" -drive if=pflash,format=raw,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   else
-    echo "config: error in boot_type for ${image_name}"
+    echo "$(basename "$0"): config: error in boot_type for ${image_name}"
   fi
 }
 
@@ -546,7 +570,7 @@ qemu_smb_support_symlink_all_vm()
 
   for ((i = 0; i < ${#pids[@]}; i++)); do
     smb_conf_path="${confs[i]}"
-    if [[ -f smb_conf_path ]]; then
+    if [[ -f "$smb_conf_path" ]]; then
       global_exists=$(grep -cx "$smb_config_global" "$smb_conf_path")
       if [ "$global_exists" -eq 0 ]; then
         sed -i "/\[global\]/a ${smb_config_global}" "$smb_conf_path"
@@ -560,10 +584,10 @@ qemu_smb_support_symlink_all_vm()
       fi
 
       if [ "$global_config_added" -eq 1 ] || [ "$qemu_config_added" -eq 1 ]; then
-        smbcontrol --configfile="${smb_conf_path}" "${pids[i]}" reload-config
+        sudo smbcontrol --configfile="${smb_conf_path}" "${pids[i]}" reload-config
       fi
 
-      echo "modified file: ${smb_conf_path}"
+      echo "$(basename "$0"): modified file: ${smb_conf_path}"
 
       global_config_added=0
       qemu_config_added=0
@@ -591,29 +615,46 @@ list_all_vm()
 kill_pid_vm()
 {
   declare -r pid="$1"
+
+  if [[ -z "$pid" ]]; then
+    echo "$(basename "$0"): pid missing"
+    return 1
+  fi
+
   kill -9 "$pid"
-  echo "killed vm: ${pid}"
+  echo "$(basename "$0"): killed vm: ${pid}"
 }
 
 kill_image_name_vm()
 {
   declare -r image_name="$1"
+
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
+
   declare pid
   declare -r vm_image_dir=$(_get_dir_vm "image")
   pid=$(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/${image_name}\(.*\)|\1|;t;d")
   kill -9 "$pid"
-  echo "killed vm: ${image_name}"
+  echo "$(basename "$0"): killed vm: ${image_name}"
 }
 
 kill_all_vm()
 {
   killall qemu-system-x86_64
-  echo "killed all active qemu vms"
+  echo "$(basename "$0"): killed all active qemu vms"
 }
 
 ssh_vm()
 {
   declare -r image_name="$1"
+
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
 
   declare user_name
   [[ -n $2 ]] && user_name=$2 || user_name=$USER
@@ -631,7 +672,10 @@ vnc_vm()
 {
   declare -r image_name="$1"
 
-  declare -r vm_config_dir=$(_get_dir_vm "config")
+  if [[ -z "$image_name" ]]; then
+    echo "$(basename "$0"): image_name missing"
+    return 1
+  fi
 
   declare -A ___vm_image_config
   ___vm_image_config[image_name]="$image_name"
