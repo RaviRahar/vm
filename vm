@@ -57,15 +57,15 @@ _completion_handler()
   declare -r vm_iso_dir=$(_get_dir_vm "iso")
   declare -r vm_ovmf_dir=$(_get_dir_vm "ovmf")
 
-  local cur prev sec_prev
+  local cur prev subcmd
   if type -t _init_completion > /dev/null; then
     _init_completion -n = || return
   else
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
-    sec_prev="${COMP_WORDS[COMP_CWORD - 2]}"
   fi
+  subcmd="${COMP_WORDS[1]}"
 
   # list of options for each command
   local initialize_options=()
@@ -83,77 +83,79 @@ _completion_handler()
   done
 
   local backup_vm_options=("${run_vm_options[@]}")
-  local remove_vm_options=("${run_vm_options[@]}")
-  local config_vm_options=("${run_vm_options[@]}")
+  local delete_vm_options=("${run_vm_options[@]}")
 
   local active_vm_options=()
   while read -r image_name_pid; do
     active_vm_options+=("$image_name_pid")
-  done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(.*\)|\3:\1|;t;d")
+  done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\3|;t;d")
 
-  local kill_vm_options=()
-  while read -r image_name; do
-    kill_vm_options+=("$image_name")
-  done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(.*\)|\3|;t;d")
+  local kill_vm_options=("${active_vm_options[@]}")
 
   local kill_vm_pid_options=()
   while read -r pid; do
     kill_vm_pid_options+=("$pid")
-  done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(.*\)|\1|;t;d")
+  done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\1|;t;d")
+
+  local config_args="--iso_name --boot_type --ssh_port --vnc_port"
 
   # complete options for vm command
   case "$prev" in
     vm | ./vm)
-      mapfile -t COMPREPLY < <(compgen -W "--create_image --initialize --setup --run --remove --backup --print --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs --install --help" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--create_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs --install --help" -- "$cur")
       ;;
-    -c | --create_image | -i | --initialize | -n | --new | --setup)
-      mapfile -t COMPREPLY < <(compgen -W "${initialize_options[*]}" -- "$cur")
+    -i | --initialize | -n | --new | --setup)
+      mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $config_args" -- "$cur")
       ;;
-    -s | --start | --run)
+    -r | --run)
       mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]}" -- "$cur")
       ;;
-    -r | --remove)
-      mapfile -t COMPREPLY < <(compgen -W "${remove_vm_options[*]}" -- "$cur")
+    -d | --delete)
+      mapfile -t COMPREPLY < <(compgen -W "${delete_vm_options[*]}" -- "$cur")
       ;;
-    -p | --print | --list)
+    -l | --list)
       mapfile -t COMPREPLY < <(compgen -W "--active --all" -- "$cur")
       ;;
     -b | --backup)
       mapfile -t COMPREPLY < <(compgen -W "--config ${backup_vm_options[*]}" -- "$cur")
       ;;
-    -l | --ssh | --login)
+    -s | --ssh)
       mapfile -t COMPREPLY < <(compgen -W "${active_vm_options[*]}" -- "$cur")
       ;;
     -v | --vnc)
       mapfile -t COMPREPLY < <(compgen -W "${active_vm_options[*]}" -- "$cur")
       ;;
-    -f | --smb_follow_symlinks)
-      mapfile -t COMPREPLY < <(compgen -W "" -- "$cur")
-      ;;
     -k | --kill)
-      mapfile -t COMPREPLY < <(compgen -W "--all ${kill_vm_options[*]}" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--all --pid ${kill_vm_options[*]}" -- "$cur")
       ;;
     -m | --make_dirs)
       mapfile -t COMPREPLY < <(compgen -W "--remove" -- "$cur")
       ;;
-    -j | --install)
+    -z | --install)
       mapfile -t COMPREPLY < <(compgen -W "--uninstall" -- "$cur")
       ;;
-    -z | --add_config)
-      mapfile -t COMPREPLY < <(compgen -W "${config_vm_options[*]}" -- "$cur")
+    -a | --add_config)
+      mapfile -t COMPREPLY < <(compgen -W "--overwrite $config_args" -- "$cur")
       ;;
-    -h | --help)
-      mapfile -t COMPREPLY < <(compgen -W "" -- "$cur")
-      ;;
-    --pid)
-      case "$sec_prev" in
-        -k | --kill)
-          mapfile -t COMPREPLY < <(compgen -W "${kill_vm_pid_options[*]}" -- "$cur")
+    *)
+      case "$subcmd" in
+        -i | --initialize | -n | --new | --setup | -a | --add_config)
+          if [[ $prev == "--iso_name" ]]; then
+            mapfile -t COMPREPLY < <(compgen -W "${initialize_options[*]}" -- "$cur")
+          elif [[ $prev == "--boot_type" ]]; then
+            mapfile -t COMPREPLY < <(compgen -W "legacy efi" -- "$cur")
+          else
+            mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $config_args" -- "$cur")
+          fi
           ;;
+        -k | --kill)
+          if [[ $prev == "-p" || $prev == "--pid" ]]; then
+            mapfile -t COMPREPLY < <(compgen -W "${kill_vm_pid_options[*]}" -- "$cur")
+          fi
+          ;;
+        *) ;;
       esac
       ;;
-    *) ;;
-
   esac
 }
 
@@ -598,7 +600,7 @@ qemu_smb_support_symlink_all_vm()
 list_active_vm()
 {
   declare -r vm_image_dir=$(_get_dir_vm "image")
-  pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(.*\)|\1 \3|;t;d"
+  pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\1 \3|;t;d"
 }
 
 list_all_vm()
