@@ -824,34 +824,34 @@ main()
 {
   case "$1" in
     -c | --create_image)
-      declare -r image_name="$3"
+      declare -r image_name="$2"
       create_image_vm "$image_name"
       ;;
     -i | --initialize)
-      declare -r iso_name="$2"
-      declare -r image_name="$3"
-      declare -r boot_type="$4"
-      declare -r ssh_port="$5"
-      declare -r vnc_port="$6"
-      initialize_vm "$iso_name" "$image_name" "$boot_type" "$ssh_port" "$vnc_port"
+      declare -r image_name="$2"
+      declare -A vm_image_config
+      vm_image_config[image_name]="$image_name"
+
+      take_config_args_vm vm_image_config "$@"
+      initialize_vm vm_image_config
       ;;
     -n | --new | --setup)
-      declare -r iso_name="$2"
-      declare -r image_name="$3"
-      declare -r boot_type="$4"
-      declare -r ssh_port="$5"
-      declare -r vnc_port="$6"
-      setup_vm "$iso_name" "$image_name" "$boot_type" "$ssh_port" "$vnc_port"
+      declare -r image_name="$2"
+      declare -A vm_image_config
+      vm_image_config[image_name]="$image_name"
+
+      take_config_args_vm vm_image_config "$@"
+      setup_vm vm_image_config
       ;;
-    -s | --start | --run)
+    -r | --run)
       declare -r image_name=$2
       run_vm "$image_name"
       ;;
-    -r | --remove)
+    -d | --delete)
       declare -r image_name=$2
-      remove_vm "$image_name"
+      delete_vm "$image_name"
       if [[ "$2" = "-a" || "$2" = "--all" ]]; then
-        remove_vm "$image_name" "backup_too"
+        delete_vm "$image_name" "backup_too"
       fi
       ;;
     -b | --backup)
@@ -862,14 +862,14 @@ main()
         backup_vm "$image_name"
       fi
       ;;
-    -p | --print | --list)
+    -l | --list)
       if [[ "$2" = "-a" || "$2" = "--all" ]]; then
         list_all_vm
       elif [[ "$2" = "--active" || -z $2 ]]; then
         list_active_vm
       fi
       ;;
-    -l | --login | --ssh)
+    -s | --ssh)
       declare -r image_name=$2
       declare -r user_name=$3
       ssh_vm "$image_name" "$user_name"
@@ -892,16 +892,21 @@ main()
         kill_image_name_vm "$image_name"
       fi
       ;;
-    -z | --add_config)
-      declare -r image_name=$2
-      declare -r boot_type=$3
-      declare -r ssh_port=$4
-      declare -r vnc_port=$5
+    -a | --add_config)
+      declare -A vm_image_config
+      take_config_args_vm vm_image_config "$@"
 
-      add_config_vm "$image_name" "$boot_type" "$ssh_port" "$vnc_port"
-      ;;
-    -u | --bash_completion)
-      setup_bash_completion_vm
+      if [[ "$2" == "-o" || "$2" == "--overwrite" ]]; then
+        declare -r image_name="$3"
+        # shellcheck disable=SC2034
+        vm_image_config[image_name]="$image_name"
+        add_config_vm vm_image_config "overwrite"
+      else
+        declare -r image_name="$2"
+        # shellcheck disable=SC2034
+        vm_image_config[image_name]="$image_name"
+        add_config_vm vm_image_config
+      fi
       ;;
     -m | --make_dirs)
       declare -r remove_dirs=$2
@@ -911,7 +916,7 @@ main()
         make_dirs_vm
       fi
       ;;
-    -j | --install)
+    -z | --install)
       declare -r uninstall=$2
       if [[ "$uninstall" == "-r" || "$uninstall" == "--remove" ]]; then
         install_vm "-r"
@@ -919,10 +924,13 @@ main()
         install_vm
       fi
       ;;
+    -u | --bash_completion)
+      setup_bash_completion_vm
+      ;;
     -h | --help)
       help_vm
       ;;
-    *) ;;
+    *) echo "$(basename "$0"): arg $1 not supported" ;;
   esac
 }
 
