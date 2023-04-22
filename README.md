@@ -41,7 +41,34 @@
         vm --ssh {{ image_name }}
         vm --vnc {{ image_name }}
 
-### Usage:
+### Example Config:
+
+    [arch-linux-systemd]
+    boot_type=legacy
+    ssh_port=2222
+    vnc_port=5900
+
+    [debian]
+    boot_type=legacy
+    ssh_port=2223
+    vnc_port=5901
+
+### Defaults for dirs:
+
+These can be changed inside script (for now):
+
+- **ovmf file**: /usr/share/edk2-ovmf/x64
+- **isos of os(es)**: $HOME/Downloads/isos
+
+- **config directory for vms**: $HOME/.config/vm
+- **config file for vms**: $HOME/.config/vm/config.vm
+- **images of vms**: $HOME/.config/vm/images
+- **ovmf vars for each vm**: $HOME/.config/vm/ovmf
+- **backup folder**: $HOME/.config/vm/backup
+
+- **samba share directory**: $HOME/shared
+
+### All Options:
 
     -c|--create_image: create new vm image named {{ image_name }}
         vm -c image_name
@@ -133,30 +160,3 @@
         vm -u
 
     -h|--help: print this help page
-
-### Example Config:
-
-    [arch-linux-systemd]
-    boot_type=legacy
-    ssh_port=2222
-    vnc_port=5900
-
-    [debian]
-    boot_type=legacy
-    ssh_port=2223
-    vnc_port=5901
-
-### Defaults for dirs:
-
-These can currently be changed inside script
-
-- **ovmf file**: /usr/share/edk2-ovmf/x64
-- **isos of os(es)**: $HOME/Downloads/isos
-
-- **config directory for vms**: $HOME/.config/vm
-- **config file for vms**: $HOME/.config/vm/config.vm
-- **images of vms**: $HOME/.config/vm/images
-- **ovmf vars for each vm**: $HOME/.config/vm/ovmf
-- **backup folder**: $HOME/.config/vm/backup
-
-- **samba share directory**: $HOME/shared
