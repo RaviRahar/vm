@@ -82,6 +82,7 @@ _completion_handler()
     fi
   done
 
+  local copy_vm_options=("${run_vm_options[@]}")
   local backup_vm_options=("${run_vm_options[@]}")
   local delete_vm_options=("${run_vm_options[@]}")
 
@@ -102,10 +103,13 @@ _completion_handler()
   # complete options for vm command
   case "$prev" in
     vm | ./vm)
-      mapfile -t COMPREPLY < <(compgen -W "--create_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs --install --help" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--generate_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --add_config --establish_dirs --install --help" -- "$cur")
       ;;
-    -i | --initialize | -n | --new | --setup)
+    --initialize | -n | --new | --setup)
       mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $config_args" -- "$cur")
+      ;;
+    -c | --copy | -m | --move)
+      mapfile -t COMPREPLY < <(compgen -W "${copy_vm_options[*]} $config_args" -- "$cur")
       ;;
     -r | --run)
       mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]}" -- "$cur")
@@ -128,7 +132,7 @@ _completion_handler()
     -k | --kill)
       mapfile -t COMPREPLY < <(compgen -W "--all --pid ${kill_vm_options[*]}" -- "$cur")
       ;;
-    -m | --make_dirs)
+    -e | --establish_dirs)
       mapfile -t COMPREPLY < <(compgen -W "--remove" -- "$cur")
       ;;
     -z | --install)
@@ -183,7 +187,7 @@ setup_bash_completion_vm()
 ##
 ################################################################
 
-make_dirs_vm()
+establish_dirs_vm()
 {
   declare -r remove_dirs="$2"
 
@@ -206,7 +210,7 @@ install_vm()
 {
   declare -r uninstall="$2"
   if [[ "$uninstall" == "-u" || "$uninstall" == "--uninstall" ]]; then
-    make_dirs_vm
+    establish_dirs_vm
     mkdir -pv "$HOME/.local/scripts"
     export PATH="${PATH}:${HOME}/.local/scripts"
 
@@ -389,7 +393,7 @@ _delete_config_vm()
   return 1
 }
 
-create_image_vm()
+generate_image_vm()
 {
   declare -r image_name="$1"
 
@@ -428,7 +432,11 @@ initialize_vm()
   declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
   declare -r vm_samba_shared_dir=$(_get_dir_vm "samba")
 
+  # write config
   _write_config_vm __vm_image_config
+  # write to backup config
+  ___vm_image_config[vm_config_path]="$(_get_dir_vm "config")/config.vm"
+  _write_config_vm ___vm_image_config
 
   # TODO
   # declare -ri ram="${__vm_image_config[ram]}"
@@ -452,7 +460,7 @@ setup_vm()
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r image_name="${_vm_image_config[image_name]}"
 
-  create_image_vm "$image_name"
+  generate_image_vm "$image_name"
   initialize_vm _vm_image_config
   echo "$(basename "$0"): setup complete for image: ${vm_image_dir}/${image_name}"
 }
@@ -499,8 +507,8 @@ backup_vm()
     return 1
   else
     declare -r image_name="$config_or_image_name"
-    cp -i "$vm_image_dir"/"$image_name" "$vm_backup_dir"/images/"$image_name"
-    cp -i "$vm_ovmf_var_for_images_dir"/"$image_name".fd "$vm_backup_dir"/ovmf/"$image_name".fd
+    cp -i "${vm_image_dir}/${image_name}" "${vm_backup_dir}/images/${image_name}"
+    cp -i "${vm_ovmf_var_for_images_dir}/${image_name}.fd" "${vm_backup_dir}/ovmf/${image_name}.fd"
     cp "${vm_config_dir}/config.vm" "${vm_backup_dir}/config.vm"
 
     echo "$(basename "$0"): backed up image: ${vm_image_dir}/${image_name}"
@@ -697,6 +705,60 @@ add_config_vm()
       echo "$(basename "$0"): config for $image_name over-written successfully"
     fi
   fi
+
+  # write to backup config
+  ___vm_image_config[vm_config_path]="$(_get_dir_vm "config")/config.vm"
+  _write_config_vm ___vm_image_config
+}
+
+copy_vm()
+{
+  declare -r source="$2"
+  declare -r destination="$3"
+
+  declare -r vm_image_dir=$(_get_dir_vm "image")
+  declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
+
+  # copy config
+  declare -A __vm_image_config
+  __vm_image_config[image_name]="$source"
+  _read_config_vm __vm_image_config
+  __vm_image_config[image_name]="$destination"
+  _write_config_vm __vm_image_config
+
+  # copy image
+  cp -i "${vm_image_dir}/${source}" "${vm_image_dir}/${destination}"
+  if [[ ${__vm_image_config[boot_type]} == "efi" ]]; then
+    # copy ovmf var file
+    cp -i "${vm_ovmf_var_for_images_dir}/${source}" "${vm_ovmf_var_for_images_dir}/${destination}"
+  fi
+}
+
+move_vm()
+{
+  declare -r source="$2"
+  declare -r destination="$3"
+
+  declare -r vm_image_dir=$(_get_dir_vm "image")
+  declare -r vm_ovmf_var_for_images_dir=$(_get_dir_vm "ovmf_var")
+
+  # move config
+  declare -A __vm_image_config
+  __vm_image_config[image_name]="$source"
+  _read_config_vm __vm_image_config
+  _delete_config_vm "${__vm_image_config[image_name]}"
+  __vm_image_config[image_name]="$destination"
+  _write_config_vm __vm_image_config
+  # write to backup file move config
+  __vm_image_config[vm_config_path]="$(_get_dir_vm "config")/config.vm"
+  _write_config_vm __vm_image_config
+
+  # move image
+  mv -v "${vm_image_dir}/${source}" "${vm_image_dir}/${destination}"
+  if [[ ${__vm_image_config[boot_type]} == "efi" ]]; then
+    # move ovmf var file
+    mv -v "${vm_ovmf_var_for_images_dir}/${source}" "${vm_ovmf_var_for_images_dir}/${destination}"
+  fi
 }
 
 take_config_args_vm()
@@ -729,8 +791,8 @@ help_vm()
   declare -r tldr="
 Usage: $(basename "$0") {{ option }}
 
-All options: --create_image --initialize --new --run --delete --backup --list 
-            --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs 
+All options: --generate_image --initialize --new --copy --move --run --delete --backup --list 
+            --ssh --vnc --smb-follow-symlink --kill --add_config --establish_dirs 
             --install --help
 
 Tldr:
@@ -760,8 +822,8 @@ Usage: $(basename "$0") {{ option }}
 
 Options:
 
-      -c|--create_image: create new vm image named {{ image_name }}
-          $(basename "$0") -c image_name
+      -g|--generate_image: create new vm image named {{ image_name }}
+          $(basename "$0") -g image_name
         
       -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
           $(basename "$0") -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
@@ -780,6 +842,11 @@ Options:
               --boot-type : efi
               --ssh-port  : 2222
               --vnc-port  : 5900
+      -c|--copy: copy vm image
+          $(basename "$0") -c image_name
+
+      -m|--move: mv vm image (rename)
+          $(basename "$0") -m image_name
 
       -r|--run: run image provided in {{ image_name }}
           $(basename "$0") -r image_name
@@ -832,12 +899,12 @@ Options:
           overwrite config if already exists:
           $(basename "$0") -a -o image_name boot_type ssh_port vnc_port
 
-      -m|--make_dirs: make or remove directories required for this script
+      -e|--establish_dirs: make or remove directories required for this script
           make directories:
-          $(basename "$0") -m
+          $(basename "$0") -e
 
           remove directories:
-          $(basename "$0") -m -r
+          $(basename "$0") -e -r
 
       -z|--install: install or uninstall script
           install:
@@ -874,9 +941,9 @@ defaults for dirs (change in script):
 main()
 {
   case "$1" in
-    -c | --create_image)
+    -g | --generate_image)
       declare -r image_name="$1"
-      create_image_vm "$image_name"
+      generate_image_vm "$image_name"
       ;;
     -i | --initialize)
       declare -r image_name="$2"
@@ -893,6 +960,12 @@ main()
 
       take_config_args_vm vm_image_config "$@"
       setup_vm vm_image_config
+      ;;
+    -c | --copy)
+      copy_vm "$@"
+      ;;
+    -m | --move)
+      move_vm "$@"
       ;;
     -r | --run)
       run_vm "$@"
@@ -927,8 +1000,8 @@ main()
       take_config_args_vm vm_image_config "$@"
       add_config_vm vm_image_config "$@"
       ;;
-    -m | --make_dirs)
-      make_dirs_vm "$@"
+    -e | --establish_dirs)
+      establish_dirs_vm "$@"
       ;;
     -z | --install)
       install_vm "$@"
