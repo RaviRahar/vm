@@ -104,7 +104,7 @@ _completion_handler()
   # complete options for vm command
   case "$prev" in
     vm | ./vm)
-      mapfile -t COMPREPLY < <(compgen -W "--generate_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --add_config --establish_dirs --install --help" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--generate_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --config --establish_dirs --install --help" -- "$cur")
       ;;
     --initialize | -n | --new | --setup)
       mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $initialize_args" -- "$cur")
@@ -139,12 +139,12 @@ _completion_handler()
     -z | --install)
       mapfile -t COMPREPLY < <(compgen -W "--uninstall" -- "$cur")
       ;;
-    -a | --add_config)
-      mapfile -t COMPREPLY < <(compgen -W "--overwrite $config_args" -- "$cur")
+    -a | --config)
+      mapfile -t COMPREPLY < <(compgen -W "--delete --modify $config_args" -- "$cur")
       ;;
     *)
       case "$subcmd" in
-        -i | --initialize | -n | --new | --setup | -a | --add_config)
+        -i | --initialize | -n | --new | --setup | -a | --config)
           if [[ $prev == "--iso_name" ]]; then
             mapfile -t COMPREPLY < <(compgen -W "${initialize_options[*]}" -- "$cur")
           elif [[ $prev == "--boot_type" ]]; then
@@ -728,31 +728,44 @@ vnc_vm()
   vncviewer :"$vnc_port"
 }
 
-add_config_vm()
+config_vm()
 {
+  # shellcheck disable=2178
   declare -n __vm_image_config="$1"
-  declare -r overwrite="$3"
+  declare -r mode="$3"
 
-  declare -r image_name="${__vm_image_config[image_name]}"
+  if [[ "$mode" == "-m" || "$mode" == "--modify" || "$mode" == "-d" || "$mode" == "--delete" ]]; then
+    declare -r image_name="$4"
+    vm_image_config[image_name]="$image_name"
+  else
+    declare -r image_name="$3"
+    vm_image_config[image_name]="$image_name"
+  fi
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
     return 1
   fi
 
-  if [[ "$overwrite" == "-o" || "$overwrite" == "--overwrite" ]]; then
-    if _write_config_vm __vm_image_config; then
-      echo "$(basename "$0"): config for $image_name written successfully"
-    fi
-  else
+  if [[ "$mode" == "-m" || "$mode" == "--modify" ]]; then
     if _write_config_vm __vm_image_config "overwrite"; then
       echo "$(basename "$0"): config for $image_name over-written successfully"
     fi
+    # write to backup config
+    __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
+    _write_config_vm __vm_image_config
+  elif [[ "$mode" == "-d" || "$mode" == "--delete" ]]; then
+    if _delete_config_vm "$image_name"; then
+      echo "$(basename "$0"): config for $image_name deleted successfully"
+    fi
+  else
+    if _write_config_vm __vm_image_config; then
+      echo "$(basename "$0"): config for $image_name written successfully"
+    fi
+    # write to backup config
+    __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
+    _write_config_vm __vm_image_config
   fi
-
-  # write to backup config
-  __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
-  _write_config_vm __vm_image_config
 }
 
 copy_vm()
@@ -848,7 +861,7 @@ help_vm()
 Usage: $(basename "$0") {{ option }}
 
 All options: --generate_image --initialize --new --copy --move --run --delete --backup --list 
-            --ssh --vnc --smb-follow-symlink --kill --add_config --establish_dirs 
+            --ssh --vnc --smb-follow-symlink --kill --config --establish_dirs 
             --install --help
 
 Tldr:
@@ -898,7 +911,7 @@ Options:
               --cores      : 4
 
       -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
-          $(basename "$0") -n image_name --iso_name arch --image-size 4 --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+          $(basename "$0") -n image_name --iso_name arch --image_size 4 --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
           necessary: image_name, --iso_name
           defaults:
@@ -950,20 +963,23 @@ Options:
           $(basename "$0") -k -p pid
           $(basename "$0") -k -a
 
-      -a|--add_config: add config for vm image
+      -a|--config: add config for vm image
           $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
           necessary: image_name
           defaults:
-              --boot-type : efi
-              --ssh-port  : 2222
-              --vnc-port  : 5900
+              --boot_type : efi
+              --ssh_port  : 2222
+              --vnc_port  : 5900
               --ram       : 4GB
               --cpus      : 4
               --cores     : 4
 
           overwrite config if already exists:
-          $(basename "$0") -a -o image_name boot_type ssh_port vnc_port
+          $(basename "$0") -a -m image_name --boot_type legacy
+
+          delete config if exists:
+          $(basename "$0") -a -d image_name
 
       -e|--establish_dirs: make or remove directories required for this script
           make directories:
@@ -1058,14 +1074,11 @@ main()
     -k | --kill)
       kill_vm "$@"
       ;;
-    -a | --add_config)
-      declare -r image_name="$2"
+    -a | --config)
+      # shellcheck disable=2034
       declare -A vm_image_config
-      # shellcheck disable=SC2034
-      vm_image_config[image_name]="$image_name"
-
       take_config_args_vm vm_image_config "$@"
-      add_config_vm vm_image_config "$@"
+      config_vm vm_image_config "$@"
       ;;
     -e | --establish_dirs)
       establish_dirs_vm "$@"
