@@ -98,7 +98,8 @@ _completion_handler()
     kill_vm_pid_options+=("$pid")
   done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\1|;t;d")
 
-  local config_args="--iso_name --boot_type --ssh_port --vnc_port"
+  local config_args="--boot_type --ssh_port --vnc_port --ram --cpus --cores"
+  local initialize_args="${config_args} --iso_name --image_size"
 
   # complete options for vm command
   case "$prev" in
@@ -106,10 +107,10 @@ _completion_handler()
       mapfile -t COMPREPLY < <(compgen -W "--generate_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --add_config --establish_dirs --install --help" -- "$cur")
       ;;
     --initialize | -n | --new | --setup)
-      mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $config_args" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $initialize_args" -- "$cur")
       ;;
     -c | --copy | -m | --move)
-      mapfile -t COMPREPLY < <(compgen -W "${copy_vm_options[*]} $config_args" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "${copy_vm_options[*]}" -- "$cur")
       ;;
     -r | --run)
       mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]}" -- "$cur")
@@ -283,6 +284,18 @@ _read_config_vm()
         ____vm_image_config[vnc_port]="${config_setting[1]}"
       fi
 
+      if [[ ${config_setting[0]} == "ram" && -z ${____vm_image_config[ram]} ]]; then
+        ____vm_image_config[ram]="${config_setting[1]}"
+      fi
+
+      if [[ ${config_setting[0]} == "cpus" && -z ${____vm_image_config[cpus]} ]]; then
+        ____vm_image_config[cpus]="${config_setting[1]}"
+      fi
+
+      if [[ ${config_setting[0]} == "cores" && -z ${____vm_image_config[cores]} ]]; then
+        ____vm_image_config[cores]="${config_setting[1]}"
+      fi
+
     fi
 
   done < "${vm_config_path}"
@@ -302,6 +315,22 @@ _read_config_vm()
       echo "$(basename "$0"): config: vnc_port for ${____vm_image_config[image_name]} not found. using 5900"
       ____vm_image_config[vnc_port]="5900"
     fi
+
+    if [[ -z "${____vm_image_config[ram]}" ]]; then
+      echo "$(basename "$0"): config: ram for ${____vm_image_config[image_name]} not found. using 4GB"
+      ____vm_image_config[ram]="4"
+    fi
+
+    if [[ -z "${____vm_image_config[cpus]}" ]]; then
+      echo "$(basename "$0"): config: cpus for ${____vm_image_config[image_name]} not found. using 4"
+      ____vm_image_config[cpus]="efi"
+    fi
+
+    if [[ -z "${____vm_image_config[cores]}" ]]; then
+      echo "$(basename "$0"): config: cores for ${____vm_image_config[image_name]} not found. using 4"
+      ____vm_image_config[cores]="4"
+    fi
+
   fi
 
   if [[ -n "$3" ]]; then
@@ -326,24 +355,34 @@ _write_config_vm()
 
   if _read_config_vm ___vm_image_config "do_not_return_defaults" &> /dev/null; then
     if [[ -n "$overwrite_existing" ]]; then
-      _delete_config_vm "${___vm_image_config[image_name]}"
+      _delete_config_vm "${___vm_image_config[image_name]}" "${___vm_image_config[vm_config_path]}"
     else
       return 1
     fi
   fi
 
-  if [[ -z "$overwrite_existing" ]]; then
-    if [[ -z "${___vm_image_config[boot_type]}" ]]; then
-      ___vm_image_config[boot_type]="efi"
-    fi
+  if [[ -z "${___vm_image_config[boot_type]}" ]]; then
+    ___vm_image_config[boot_type]="efi"
+  fi
 
-    if [[ -z "${___vm_image_config[ssh_port]}" ]]; then
-      ___vm_image_config[ssh_port]="2222"
-    fi
+  if [[ -z "${___vm_image_config[ssh_port]}" ]]; then
+    ___vm_image_config[ssh_port]="2222"
+  fi
 
-    if [[ -z "${___vm_image_config[vnc_port]}" ]]; then
-      ___vm_image_config[vnc_port]="5900"
-    fi
+  if [[ -z "${___vm_image_config[vnc_port]}" ]]; then
+    ___vm_image_config[vnc_port]="5900"
+  fi
+
+  if [[ -z "${___vm_image_config[ram]}" ]]; then
+    ___vm_image_config[ram]="4"
+  fi
+
+  if [[ -z "${___vm_image_config[cpus]}" ]]; then
+    ___vm_image_config[cpus]="4"
+  fi
+
+  if [[ -z "${___vm_image_config[cores]}" ]]; then
+    ___vm_image_config[cores]="4"
   fi
 
   cat >> "${vm_config_path}" << EOF
@@ -351,6 +390,9 @@ _write_config_vm()
 boot_type=${___vm_image_config[boot_type]}
 ssh_port=${___vm_image_config[ssh_port]}
 vnc_port=${___vm_image_config[vnc_port]}
+ram=${___vm_image_config[ram]}
+cpus=${___vm_image_config[cpus]}
+cores=${___vm_image_config[cores]}
 EOF
 
   return 0
@@ -396,6 +438,7 @@ _delete_config_vm()
 generate_image_vm()
 {
   declare -r image_name="$1"
+  declare -r image_size="$2"
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
@@ -404,10 +447,13 @@ generate_image_vm()
 
   declare -r vm_image_dir=$(_get_dir_vm "image")
 
-  # TODO
-  # declare -ri image_size="${__vm_image_config[image_size]}"
+  if [[ -z "$image_size" ]]; then
+    echo "$(basename "$0"): image_size missing, using 20GB"
+    qemu-img create -o nocow=on -f qcow2 "$vm_image_dir"/"${image_name:?}" 20G
+  else
+    qemu-img create -o nocow=on -f qcow2 "$vm_image_dir"/"${image_name:?}" "${image_size}"G
+  fi
 
-  qemu-img create -o nocow=on -f qcow2 "$vm_image_dir"/"${image_name:?}" 20G
   echo "$(basename "$0"): created image: ${vm_image_dir}/${image_name}"
 }
 
@@ -417,9 +463,13 @@ initialize_vm()
 
   declare -r iso_name="${__vm_image_config[iso_name]}"
   declare -r image_name="${__vm_image_config[image_name]}"
+
   declare -r boot_type="${__vm_image_config[boot_type]}"
   declare -ri ssh_port="${__vm_image_config[ssh_port]}"
   declare -ri vnc_port="${__vm_image_config[vnc_port]}"
+  declare -ri ram="${__vm_image_config[ram]}"
+  declare -ri cpus="${__vm_image_config[cpus]}"
+  declare -ri cores="${__vm_image_config[cores]}"
 
   if [[ -z "$image_name" || -z "$iso_name" ]]; then
     echo "$(basename "$0"): image_name or --iso_name missing"
@@ -433,21 +483,16 @@ initialize_vm()
   declare -r vm_samba_shared_dir=$(_get_dir_vm "samba")
 
   # write config
-  _write_config_vm __vm_image_config
+  _write_config_vm __vm_image_config "overwrite"
   # write to backup config
-  ___vm_image_config[vm_config_path]="$(_get_dir_vm "config")/config.vm"
-  _write_config_vm ___vm_image_config
-
-  # TODO
-  # declare -ri ram="${__vm_image_config[ram]}"
-  # declare -ri cores="${__vm_image_config[cores]}"
-  # declare -ri cpus="${__vm_image_config[cpus]}"
+  __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
+  _write_config_vm __vm_image_config "overwrite"
 
   if [[ "legacy" == $(_trim_and_lower_case_vm "$boot_type") ]]; then
-    qemu-system-x86_64 -enable-kvm -cdrom "$vm_iso_dir"/"$iso_name" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4
+    qemu-system-x86_64 -enable-kvm -cdrom "$vm_iso_dir"/"$iso_name" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m ${ram}G -smp cores=${cores},cpus=${cpus}
   else
     cp -i "$vm_ovmf_dir"/OVMF_VARS.fd "$vm_ovmf_var_for_images_dir"/"$image_name".fd
-    qemu-system-x86_64 -enable-kvm -cdrom "${vm_iso_dir}/${iso_name}" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 -drive if=pflash,format=raw,unit=0,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
+    qemu-system-x86_64 -enable-kvm -cdrom "${vm_iso_dir}/${iso_name}" -boot order=d -drive file="$vm_image_dir"/"$image_name" -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::"${ssh_port}"-:22,smb="$vm_samba_shared_dir" -daemonize -m ${ram}G -smp cores=${cores},cpus=${cpus} -drive if=pflash,format=raw,unit=0,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   fi
 
   echo "$(basename "$0"): initialized image: ${vm_image_dir}/${image_name}"
@@ -459,8 +504,9 @@ setup_vm()
 
   declare -r vm_image_dir=$(_get_dir_vm "image")
   declare -r image_name="${_vm_image_config[image_name]}"
+  declare -r image_size="${_vm_image_config[image_size]}"
 
-  generate_image_vm "$image_name"
+  generate_image_vm "$image_name" "$image_size"
   initialize_vm _vm_image_config
   echo "$(basename "$0"): setup complete for image: ${vm_image_dir}/${image_name}"
 }
@@ -536,18 +582,16 @@ run_vm()
   declare -r boot_type=${___vm_image_config[boot_type]}
   declare -i ssh_port=${___vm_image_config[ssh_port]}
   declare -i vnc_port=${___vm_image_config[vnc_port]}
-
-  # TODO
-  # declare -ri ram="${__vm_image_config[ram]}"
-  # declare -ri cores="${__vm_image_config[cores]}"
-  # declare -ri cpus="${__vm_image_config[cpus]}"
+  declare -ri ram="${__vm_image_config[ram]}"
+  declare -ri cpus="${__vm_image_config[cpus]}"
+  declare -ri cores="${__vm_image_config[cores]}"
 
   if [[ "$boot_type" == "legacy" ]]; then
     echo "$(basename "$0"): running image: ${vm_image_dir}/${image_name}"
-    qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 "$vm_image_dir"/"$image_name"
+    qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m ${ram}G -smp cores=${cores},cpus=${cpus} "$vm_image_dir"/"$image_name"
   elif [[ "$boot_type" == "efi" ]]; then
     echo "$(basename "$0"): running image: ${vm_image_dir}/${image_name}"
-    qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m 4G -smp cores=4,cpus=4 "$vm_image_dir"/"$image_name" -drive if=pflash,format=raw,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
+    qemu-system-x86_64 -enable-kvm -vnc :$((vnc_port - 5900)) -nic user,hostfwd=tcp::${ssh_port}-:22,smb="$vm_samba_shared_dir" -daemonize -m ${ram}G -smp cores=${cores},cpus=${cpus} "$vm_image_dir"/"$image_name" -drive if=pflash,format=raw,readonly=on,file="$vm_ovmf_dir"/OVMF_CODE.fd -drive if=pflash,format=raw,file="$vm_ovmf_var_for_images_dir"/"$image_name".fd
   else
     echo "$(basename "$0"): config: error in boot_type for ${image_name}"
   fi
@@ -707,8 +751,8 @@ add_config_vm()
   fi
 
   # write to backup config
-  ___vm_image_config[vm_config_path]="$(_get_dir_vm "config")/config.vm"
-  _write_config_vm ___vm_image_config
+  __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
+  _write_config_vm __vm_image_config
 }
 
 copy_vm()
@@ -750,7 +794,7 @@ move_vm()
   __vm_image_config[image_name]="$destination"
   _write_config_vm __vm_image_config
   # write to backup file move config
-  __vm_image_config[vm_config_path]="$(_get_dir_vm "config")/config.vm"
+  __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
   _write_config_vm __vm_image_config
 
   # move image
@@ -768,17 +812,29 @@ take_config_args_vm()
   for ((i = 3; i <= "$#"; i++)); do
     next=$((i + 1))
     case "${!i}" in
-      -i | --iso_name)
+      --iso_name)
         _vm_image_config[iso_name]="${!next}"
         ;;
-      -b | --boot_type)
+      --boot_type)
         _vm_image_config[boot_type]="${!next}"
         ;;
-      -s | --ssh_port)
+      --ssh_port)
         _vm_image_config[ssh_port]="${!next}"
         ;;
-      -v | --vnc_port)
+      --vnc_port)
         _vm_image_config[vnc_port]="${!next}"
+        ;;
+      --ram)
+        _vm_image_config[ram]="${!next}"
+        ;;
+      --cores)
+        _vm_image_config[cores]="${!next}"
+        ;;
+      --cpus)
+        _vm_image_config[cpus]="${!next}"
+        ;;
+      --image_size)
+        _vm_image_config[image_size]="${!next}"
         ;;
       *) ;;
     esac
@@ -797,24 +853,24 @@ All options: --generate_image --initialize --new --copy --move --run --delete --
 
 Tldr:
   1. Create an vm from an iso:
-    $(basename "$0") --new image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+      $(basename "$0") --new image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
   2. Delete a vm image:
-    $(basename "$0") --delete image_name
+      $(basename "$0") --delete image_name
 
   3. List active vms:
-    $(basename "$0") --list
+      $(basename "$0") --list
 
   4. List all vms:
-    $(basename "$0") --list --all
+      $(basename "$0") --list --all
 
   5. Kill vm:
-    $(basename "$0") {{ image_name }}
-    $(basename "$0") --pid {{ pid }}
+      $(basename "$0") {{ image_name }}
+      $(basename "$0") --pid {{ pid }}
 
   6. Start ssh or vnc to an active vm:
-    $(basename "$0") --ssh {{ image_name }}
-    $(basename "$0") --vnc {{ image_name }}
+      $(basename "$0") --ssh {{ image_name }}
+      $(basename "$0") --vnc {{ image_name }}
 "
 
   declare -r complete_options="
@@ -823,25 +879,31 @@ Usage: $(basename "$0") {{ option }}
 Options:
 
       -g|--generate_image: create new vm image named {{ image_name }}
-          $(basename "$0") -g image_name
+          $(basename "$0") -g image_name image_size
         
+          defaults:
+              image_size  : 4GB
+
       -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
-          $(basename "$0") -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+          $(basename "$0") -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
           necessary: image_name, --iso_name
           defaults:
-              --boot-type : efi
-              --ssh-port  : 2222
-              --vnc-port  : 5900
+              --boot_type  : efi
+              --ssh_port   : 2222
+              --vnc_port   : 5900
+              --image_size : 4GB
+              --ram        : 4GB
+              --cpus       : 4
+              --cores      : 4
 
       -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
-          $(basename "$0") -n image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+          $(basename "$0") -n image_name --iso_name arch --image-size 4 --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
           necessary: image_name, --iso_name
           defaults:
-              --boot-type : efi
-              --ssh-port  : 2222
-              --vnc-port  : 5900
+              same as initialize option (see above)
+
       -c|--copy: copy vm image
           $(basename "$0") -c image_name
 
@@ -889,13 +951,17 @@ Options:
           $(basename "$0") -k -a
 
       -a|--add_config: add config for vm image
-          $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
+          $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
           necessary: image_name
           defaults:
               --boot-type : efi
               --ssh-port  : 2222
               --vnc-port  : 5900
+              --ram       : 4GB
+              --cpus      : 4
+              --cores     : 4
+
           overwrite config if already exists:
           $(basename "$0") -a -o image_name boot_type ssh_port vnc_port
 
@@ -942,8 +1008,9 @@ main()
 {
   case "$1" in
     -g | --generate_image)
-      declare -r image_name="$1"
-      generate_image_vm "$image_name"
+      declare -r image_name="$2"
+      declare -r image_size="$3"
+      generate_image_vm "$image_name" "$image_size"
       ;;
     -i | --initialize)
       declare -r image_name="$2"
