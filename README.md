@@ -16,13 +16,13 @@
 
 ### TLDR
 
-    All options: --create_image --initialize --new --run --delete --backup --list
-                --ssh --vnc --smb-follow-symlink --kill --add_config --make_dirs
+    All options: --generate_image --initialize --new --copy --move --run --delete --backup --list
+                --ssh --vnc --smb-follow-symlink --kill --config --establish_dirs
                 --install --help
 
     Tldr:
     1. Create an vm from an iso:
-        vm --new image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+        vm --new image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
     2. Delete a vm image:
         vm --delete image_name
@@ -70,26 +70,37 @@ These can be changed inside script (for now):
 
 ### All Options:
 
-    -c|--create_image: create new vm image named {{ image_name }}
-        vm -c image_name
+    -g|--generate_image: create new vm image named {{ image_name }}
+        vm -g image_name image_size
+
+        defaults:
+            image_size  : 4GB
 
     -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
-        vm -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+        vm -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
         necessary: image_name, --iso_name
         defaults:
-            --boot-type : efi
-            --ssh-port  : 2222
-            --vnc-port  : 5900
+            --boot_type  : efi
+            --ssh_port   : 2222
+            --vnc_port   : 5900
+            --image_size : 4GB
+            --ram        : 4GB
+            --cpus       : 4
+            --cores      : 4
 
     -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
-        vm -n image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900
+        vm -n image_name --iso_name arch --image_size 4 --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
         necessary: image_name, --iso_name
         defaults:
-            --boot-type : efi
-            --ssh-port  : 2222
-            --vnc-port  : 5900
+            same as initialize option (see above)
+
+    -c|--copy: copy vm image
+        vm -c image_name
+
+    -m|--move: mv vm image (rename)
+        vm -m image_name
 
     -r|--run: run image provided in {{ image_name }}
         vm -r image_name
@@ -131,23 +142,30 @@ These can be changed inside script (for now):
         vm -k -p pid
         vm -k -a
 
-    -a|--add_config: add config for vm image
-        vm -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
+    -a|--config: add config for vm image
+        vm -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
         necessary: image_name
         defaults:
-            --boot-type : efi
-            --ssh-port  : 2222
-            --vnc-port  : 5900
-        overwrite config if already exists:
-        vm -a -o image_name boot_type ssh_port vnc_port
+            --boot_type : efi
+            --ssh_port  : 2222
+            --vnc_port  : 5900
+            --ram       : 4GB
+            --cpus      : 4
+            --cores     : 4
 
-    -m|--make_dirs: make or remove directories required for this script
+        overwrite config if already exists:
+        vm -a -m image_name --boot_type legacy
+
+        delete config if exists:
+        vm -a -d image_name
+
+    -e|--establish_dirs: make or remove directories required for this script
         make directories:
-        vm -m
+        vm -e
 
         remove directories:
-        vm -m -r
+        vm -e -r
 
     -z|--install: install or uninstall script
         install:
