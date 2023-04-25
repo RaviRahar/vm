@@ -27,17 +27,23 @@
     2. Delete a vm image:
         vm --delete image_name
 
-    3. List active vms:
+    3. Copy a vm image:
+        vm --copy source_image_name destination_image_name
+
+    4. Rename(move) a vm image:
+        vm --move old_image_name new_image_name
+
+    5. List active vms:
         vm --list
 
-    4. List all vms:
+    6. List all vms:
         vm --list --all
 
-    5. Kill vm:
+    7. Kill vm:
         vm {{ image_name }}
         vm --pid {{ pid }}
 
-    6. Start ssh or vnc to an active vm:
+    8. Start ssh or vnc to an active vm:
         vm --ssh {{ image_name }}
         vm --vnc {{ image_name }}
 
@@ -153,6 +159,9 @@ These can be changed inside script (for now):
             --ram       : 4GB
             --cpus      : 4
             --cores     : 4
+
+        print config if exists:
+        vm -a -p image_name
 
         overwrite config if already exists:
         vm -a -m image_name --boot_type legacy
