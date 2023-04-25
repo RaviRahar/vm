@@ -98,6 +98,11 @@ _completion_handler()
     kill_vm_pid_options+=("$pid")
   done < <(pgrep -a qemu | sed "s|^\([0-9]*\)\s\(.*\)${vm_image_dir}/\(\S*\).*|\1|;t;d")
 
+  local existing_config_options=()
+  while read -r pid; do
+    existing_config_options+=("$pid")
+  done < <(sed "s|.*\[\(.*\)\].*|\1|;t;d" "${vm_config_dir}/config.vm")
+
   local config_args="--boot_type --ssh_port --vnc_port --ram --cpus --cores"
   local initialize_args="${config_args} --iso_name --image_size"
 
@@ -107,7 +112,7 @@ _completion_handler()
       mapfile -t COMPREPLY < <(compgen -W "--generate_image --initialize --new --run --delete --backup --list --ssh --vnc --smb-follow-symlink --kill --config --establish_dirs --install --help" -- "$cur")
       ;;
     --initialize | -n | --new | --setup)
-      mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $initialize_args" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]}" -- "$cur")
       ;;
     -c | --copy | -m | --move)
       mapfile -t COMPREPLY < <(compgen -W "${copy_vm_options[*]}" -- "$cur")
@@ -140,18 +145,39 @@ _completion_handler()
       mapfile -t COMPREPLY < <(compgen -W "--uninstall" -- "$cur")
       ;;
     -a | --config)
-      mapfile -t COMPREPLY < <(compgen -W "--delete --modify $config_args" -- "$cur")
+      case "$subcmd" in
+        -a | --config)
+          mapfile -t COMPREPLY < <(compgen -W "--delete --modify --print ${run_vm_options[*]}" -- "$cur")
+          ;;
+        -b | --backup)
+          mapfile -t COMPREPLY < <(compgen -W "${existing_config_options[*]}" -- "$cur")
+          ;;
+      esac
       ;;
     *)
       case "$subcmd" in
         -i | --initialize | -n | --new | --setup | -a | --config)
-          if [[ $prev == "--iso_name" ]]; then
-            mapfile -t COMPREPLY < <(compgen -W "${initialize_options[*]}" -- "$cur")
-          elif [[ $prev == "--boot_type" ]]; then
-            mapfile -t COMPREPLY < <(compgen -W "legacy efi" -- "$cur")
-          else
-            mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]} $config_args" -- "$cur")
-          fi
+          case "$prev" in
+            --iso_name)
+              mapfile -t COMPREPLY < <(compgen -W "${initialize_options[*]}" -- "$cur")
+              ;;
+            --boot_type)
+              mapfile -t COMPREPLY < <(compgen -W "legacy efi" -- "$cur")
+              ;;
+            -d | --delete | -m | --modify | -p | --print)
+              mapfile -t COMPREPLY < <(compgen -W "${existing_config_options[*]}" -- "$cur")
+              ;;
+            *)
+              case "$subcmd" in
+                -i | --initialize | -n | --new | --setup)
+                  mapfile -t COMPREPLY < <(compgen -W "$initialize_args" -- "$cur")
+                  ;;
+                -a | --config)
+                  mapfile -t COMPREPLY < <(compgen -W "$config_args" -- "$cur")
+                  ;;
+              esac
+              ;;
+          esac
           ;;
         -k | --kill)
           if [[ $prev == "-p" || $prev == "--pid" ]]; then
@@ -734,38 +760,71 @@ config_vm()
   declare -n __vm_image_config="$1"
   declare -r mode="$3"
 
-  if [[ "$mode" == "-m" || "$mode" == "--modify" || "$mode" == "-d" || "$mode" == "--delete" ]]; then
-    declare -r image_name="$4"
-    vm_image_config[image_name]="$image_name"
-  else
-    declare -r image_name="$3"
-    vm_image_config[image_name]="$image_name"
-  fi
+  case "$mode" in
+    -m | --modify | -d | --delete | -p | --print)
+      declare -r image_name="$4"
+      vm_image_config[image_name]="$image_name"
+      ;;
+    *)
+      declare -r image_name="$3"
+      vm_image_config[image_name]="$image_name"
+      ;;
+  esac
 
   if [[ -z "$image_name" ]]; then
     echo "$(basename "$0"): image_name missing"
     return 1
   fi
 
-  if [[ "$mode" == "-m" || "$mode" == "--modify" ]]; then
-    if _write_config_vm __vm_image_config "overwrite"; then
-      echo "$(basename "$0"): config for $image_name over-written successfully"
-    fi
-    # write to backup config
-    __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
-    _write_config_vm __vm_image_config
-  elif [[ "$mode" == "-d" || "$mode" == "--delete" ]]; then
-    if _delete_config_vm "$image_name"; then
-      echo "$(basename "$0"): config for $image_name deleted successfully"
-    fi
-  else
-    if _write_config_vm __vm_image_config; then
-      echo "$(basename "$0"): config for $image_name written successfully"
-    fi
-    # write to backup config
-    __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
-    _write_config_vm __vm_image_config
-  fi
+  case "$mode" in
+    -m | --modify)
+      if _write_config_vm __vm_image_config "overwrite"; then
+        echo "$(basename "$0"): config for $image_name over-written successfully"
+      fi
+      # write to backup config
+      __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
+      _write_config_vm __vm_image_config
+      ;;
+    -d | --delete)
+      if _delete_config_vm "$image_name"; then
+        echo "$(basename "$0"): config for $image_name deleted successfully"
+      fi
+      ;;
+    -p | --print)
+      if _read_config_vm __vm_image_config "do_not_return_defaults"; then
+        if [[ -n ${__vm_image_config[image_name]} ]]; then
+          echo
+          echo "[${__vm_image_config[image_name]}]"
+          if [[ -n ${__vm_image_config[boot_type]} ]]; then
+            echo "boot_type = ${__vm_image_config[boot_type]}"
+          fi
+          if [[ -n ${__vm_image_config[ssh_port]} ]]; then
+            echo "ssh_port  = ${__vm_image_config[ssh_port]}"
+          fi
+          if [[ -n ${__vm_image_config[vnc_port]} ]]; then
+            echo "vnc_port  = ${__vm_image_config[vnc_port]}"
+          fi
+          if [[ -n ${__vm_image_config[ram]} ]]; then
+            echo "ram       = ${__vm_image_config[ram]}"
+          fi
+          if [[ -n ${__vm_image_config[cpus]} ]]; then
+            echo "cpus      = ${__vm_image_config[cpus]}"
+          fi
+          if [[ -n ${__vm_image_config[cores]} ]]; then
+            echo "cores     = ${__vm_image_config[cores]}"
+          fi
+        fi
+      fi
+      ;;
+    *)
+      if _write_config_vm __vm_image_config; then
+        echo "$(basename "$0"): config for $image_name written successfully"
+      fi
+      # write to backup config
+      __vm_image_config[vm_config_path]="$(_get_dir_vm "backup")/config.vm"
+      _write_config_vm __vm_image_config
+      ;;
+  esac
 }
 
 copy_vm()
@@ -974,6 +1033,9 @@ Options:
               --ram       : 4GB
               --cpus      : 4
               --cores     : 4
+
+          print config if exists:
+          $(basename "$0") -a -p image_name
 
           overwrite config if already exists:
           $(basename "$0") -a -m image_name --boot_type legacy
