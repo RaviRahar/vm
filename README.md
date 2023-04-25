@@ -102,7 +102,7 @@ These can be changed inside script (for now):
         defaults:
             same as initialize option (see above)
 
-    -c|--copy: copy vm image
+    -x|--xerox|--copy: copy vm image
         vm -c image_name
 
     -m|--move: mv vm image (rename)
@@ -148,7 +148,7 @@ These can be changed inside script (for now):
         vm -k -p pid
         vm -k -a
 
-    -a|--config: add config for vm image
+    -c|--config: add config for vm image
         vm -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
         necessary: image_name
@@ -168,6 +168,9 @@ These can be changed inside script (for now):
 
         delete config if exists:
         vm -a -d image_name
+
+        open config file:
+        vm -a -o
 
     -e|--establish_dirs: make or remove directories required for this script
         make directories:

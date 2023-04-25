@@ -114,7 +114,7 @@ _completion_handler()
     --initialize | -n | --new | --setup)
       mapfile -t COMPREPLY < <(compgen -W "${run_vm_options[*]}" -- "$cur")
       ;;
-    -c | --copy | -m | --move)
+    -x | --xerox | --copy | -m | --move)
       mapfile -t COMPREPLY < <(compgen -W "${copy_vm_options[*]}" -- "$cur")
       ;;
     -r | --run)
@@ -144,10 +144,10 @@ _completion_handler()
     -z | --install)
       mapfile -t COMPREPLY < <(compgen -W "--uninstall" -- "$cur")
       ;;
-    -a | --config)
+    -c | --config)
       case "$subcmd" in
-        -a | --config)
-          mapfile -t COMPREPLY < <(compgen -W "--delete --modify --print ${run_vm_options[*]}" -- "$cur")
+        -c | --config)
+          mapfile -t COMPREPLY < <(compgen -W "--delete --modify --print --open ${run_vm_options[*]}" -- "$cur")
           ;;
         -b | --backup)
           mapfile -t COMPREPLY < <(compgen -W "${existing_config_options[*]}" -- "$cur")
@@ -156,7 +156,7 @@ _completion_handler()
       ;;
     *)
       case "$subcmd" in
-        -i | --initialize | -n | --new | --setup | -a | --config)
+        -i | --initialize | -n | --new | --setup | -c | --config)
           case "$prev" in
             --iso_name)
               mapfile -t COMPREPLY < <(compgen -W "${initialize_options[*]}" -- "$cur")
@@ -172,7 +172,7 @@ _completion_handler()
                 -i | --initialize | -n | --new | --setup)
                   mapfile -t COMPREPLY < <(compgen -W "$initialize_args" -- "$cur")
                   ;;
-                -a | --config)
+                -c | --config)
                   mapfile -t COMPREPLY < <(compgen -W "$config_args" -- "$cur")
                   ;;
               esac
@@ -786,6 +786,9 @@ config_vm()
         echo "$(basename "$0"): config for $image_name deleted successfully"
       fi
       ;;
+    -o | --open)
+      "$EDITOR" "$(_get_dir_vm "config")/config.vm"
+      ;;
     -p | --print)
       if _read_config_vm __vm_image_config "do_not_return_defaults"; then
         if [[ -n ${__vm_image_config[image_name]} ]]; then
@@ -966,7 +969,7 @@ Options:
           defaults:
               same as initialize option (see above)
 
-      -c|--copy: copy vm image
+      -x|--xerox|--copy: copy vm image
           $(basename "$0") -c image_name
 
       -m|--move: mv vm image (rename)
@@ -1012,7 +1015,7 @@ Options:
           $(basename "$0") -k -p pid
           $(basename "$0") -k -a
 
-      -a|--config: add config for vm image
+      -c|--config: add config for vm image
           $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
 
           necessary: image_name
@@ -1032,6 +1035,9 @@ Options:
 
           delete config if exists:
           $(basename "$0") -a -d image_name
+
+          open config file:
+          $(basename "$0") -a -o
 
       -e|--establish_dirs: make or remove directories required for this script
           make directories:
@@ -1096,7 +1102,7 @@ main()
       take_config_args_vm vm_image_config "$@"
       setup_vm vm_image_config
       ;;
-    -c | --copy)
+    -x | --xerox | --copy)
       copy_vm "$@"
       ;;
     -m | --move)
@@ -1126,7 +1132,7 @@ main()
     -k | --kill)
       kill_vm "$@"
       ;;
-    -a | --config)
+    -c | --config)
       # shellcheck disable=2034
       declare -A vm_image_config
       take_config_args_vm vm_image_config "$@"
