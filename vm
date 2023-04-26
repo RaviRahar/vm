@@ -103,7 +103,7 @@ _completion_handler()
     existing_config_options+=("$pid")
   done < <(sed "s|.*\[\(.*\)\].*|\1|;t;d" "${vm_config_dir}/config.vm")
 
-  local config_args="--boot_type --ssh_port --vnc_port --ram --cpus --cores"
+  local config_args="--boot_type --ssh_port --vnc_port --ram --cpus --cores --ssh_user_name"
   local initialize_args="${config_args} --iso_name --image_size"
 
   # complete options for vm command
@@ -166,6 +166,9 @@ _completion_handler()
               ;;
             -d | --delete | -m | --modify | -p | --print)
               mapfile -t COMPREPLY < <(compgen -W "${existing_config_options[*]}" -- "$cur")
+              ;;
+            --ssh_user_name)
+              mapfile -t COMPREPLY < <(compgen -W "$USER" -- "$cur")
               ;;
             *)
               case "$subcmd" in
@@ -322,6 +325,10 @@ _read_config_vm()
         ____vm_image_config[cores]="${config_setting[1]}"
       fi
 
+      if [[ ${config_setting[0]} == "ssh_user_name" && -z ${____vm_image_config[ssh_user_name]} ]]; then
+        ____vm_image_config[ssh_user_name]="${config_setting[1]}"
+      fi
+
     fi
 
   done < "${vm_config_path}"
@@ -421,7 +428,10 @@ cpus=${___vm_image_config[cpus]}
 cores=${___vm_image_config[cores]}
 EOF
 
-  return 0
+  if [[ -n "${___vm_image_config[ssh_user_name]}" ]]; then
+    echo "ssh_user_name=${___vm_image_config[ssh_user_name]}" >> "${vm_config_path}"
+  fi
+
 }
 
 _delete_config_vm()
@@ -724,12 +734,18 @@ ssh_vm()
     return 1
   fi
 
-  declare user_name
-  [[ -n $3 ]] && user_name=$3 || user_name=$USER
-
   declare -A ___vm_image_config
   ___vm_image_config[image_name]="$image_name"
   _read_config_vm ___vm_image_config
+
+  declare user_name
+  if [[ -n "$3" ]]; then
+    user_name="$3"
+  elif [[ -n ${___vm_image_config[ssh_user_name]} ]]; then
+    user_name=${___vm_image_config[ssh_user_name]}
+  else
+    user_name=$USER
+  fi
 
   declare -i ssh_port=${___vm_image_config[ssh_port]}
 
@@ -901,6 +917,9 @@ take_config_args_vm()
       --image_size)
         _vm_image_config[image_size]="${!next}"
         ;;
+      --ssh_user_name)
+        _vm_image_config[ssh_user_name]="${!next}"
+        ;;
       *) ;;
     esac
   done
@@ -950,20 +969,21 @@ Options:
               image_size  : 4GB
 
       -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
-          $(basename "$0") -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+          $(basename "$0") -i image_name --iso_name arch --boot_type
 
           necessary: image_name, --iso_name
           defaults:
-              --boot_type  : efi
-              --ssh_port   : 2222
-              --vnc_port   : 5900
-              --image_size : 4GB
-              --ram        : 4GB
-              --cpus       : 4
-              --cores      : 4
+              --boot_type     : efi
+              --ssh_port      : 2222
+              --vnc_port      : 5900
+              --image_size    : 4GB
+              --ram           : 4GB
+              --cpus          : 4
+              --cores         : 4
+              --ssh_user_name : no default
 
       -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
-          $(basename "$0") -n image_name --iso_name arch --image_size 4 --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+          $(basename "$0") -n image_name --iso_name arch --image_size 4 --boot_type efi
 
           necessary: image_name, --iso_name
           defaults:
@@ -1016,16 +1036,17 @@ Options:
           $(basename "$0") -k -a
 
       -c|--config: add config for vm image
-          $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+          $(basename "$0") -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
 
           necessary: image_name
           defaults:
-              --boot_type : efi
-              --ssh_port  : 2222
-              --vnc_port  : 5900
-              --ram       : 4GB
-              --cpus      : 4
-              --cores     : 4
+              --boot_type     : efi
+              --ssh_port      : 2222
+              --vnc_port      : 5900
+              --ram           : 4GB
+              --cpus          : 4
+              --cores         : 4
+              --ssh_user_name : no default
 
           print config if exists:
           $(basename "$0") -a -p image_name

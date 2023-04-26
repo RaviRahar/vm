@@ -83,20 +83,21 @@ These can be changed inside script (for now):
             image_size  : 4GB
 
     -i|--initialize: initialize vm image named {{ image_name }} with {{ iso_name }}
-        vm -i image_name --iso_name arch --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+        vm -i image_name --iso_name arch --boot_type
 
         necessary: image_name, --iso_name
         defaults:
-            --boot_type  : efi
-            --ssh_port   : 2222
-            --vnc_port   : 5900
-            --image_size : 4GB
-            --ram        : 4GB
-            --cpus       : 4
-            --cores      : 4
+            --boot_type     : efi
+            --ssh_port      : 2222
+            --vnc_port      : 5900
+            --image_size    : 4GB
+            --ram           : 4GB
+            --cpus          : 4
+            --cores         : 4
+            --ssh_user_name : no default
 
     -n|--new|--setup: create and initialize vm image named {{ image_name }} with {{ iso_name }}
-        vm -n image_name --iso_name arch --image_size 4 --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+        vm -n image_name --iso_name arch --image_size 4 --boot_type efi
 
         necessary: image_name, --iso_name
         defaults:
@@ -149,16 +150,17 @@ These can be changed inside script (for now):
         vm -k -a
 
     -c|--config: add config for vm image
-        vm -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900 --ram 4 --cpus 4 --cores 4
+        vm -a image_name --boot_type efi --ssh_port 2222 --vnc_port 5900
 
         necessary: image_name
         defaults:
-            --boot_type : efi
-            --ssh_port  : 2222
-            --vnc_port  : 5900
-            --ram       : 4GB
-            --cpus      : 4
-            --cores     : 4
+            --boot_type     : efi
+            --ssh_port      : 2222
+            --vnc_port      : 5900
+            --ram           : 4GB
+            --cpus          : 4
+            --cores         : 4
+            --ssh_user_name : no default
 
         print config if exists:
         vm -a -p image_name
