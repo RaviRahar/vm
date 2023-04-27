@@ -257,13 +257,36 @@ install_vm()
   fi
 }
 
-_trim_and_lower_case_vm()
+_trim_vm()
 {
   local string
   string="$1"
   string=$(echo -e "${string}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-  string=${string,,}
   echo "$string"
+}
+
+_trim_and_lower_case_vm()
+{
+  string_or_option="$1"
+  local string
+  case "$string_or_option" in
+    trim)
+      string="$2"
+      string=$(echo -e "${string}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+      echo "$string"
+      ;;
+    lowercase)
+      string="$2"
+      string=${string,,}
+      echo "$string"
+      ;;
+    *)
+      string="$string_or_option"
+      string=$(echo -e "${string}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+      string=${string,,}
+      echo "$string"
+      ;;
+  esac
 }
 
 _read_config_vm()
@@ -287,7 +310,7 @@ _read_config_vm()
     local edited_line
     edited_line=$(_trim_and_lower_case_vm "$line")
 
-    if [[ "$edited_line" == "[${____vm_image_config[image_name]}]" ]]; then
+    if [[ "$(_trim_and_lower_case_vm "trim" "$line")" == "[${____vm_image_config[image_name]}]" ]]; then
       image_config_found=1
     elif [[ "$image_config_found" -eq 1 && "$edited_line" =~ ^"[".*"]"$ ]]; then
       break
